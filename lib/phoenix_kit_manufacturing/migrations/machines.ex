@@ -20,6 +20,13 @@ defmodule PhoenixKitManufacturing.Migrations.Machines do
       * V2: `field_template` (JSONB array, default `[]`) — the per-type
         dynamic metadata field definitions rendered on the machine form.
     * `phoenix_kit_machine_type_assignments` (join, V1 only).
+    * `phoenix_kit_operations` (V3) — global operation directory: `name`,
+      `unit`, `base_time_norm_seconds`, `status`, `data`.
+    * `phoenix_kit_machine_operations` (join, V3) — machine<->operation
+      linking with an optional per-machine `time_norm_seconds` override
+      (`NULL` means "use the operation's `base_time_norm_seconds`"),
+      unique on `(machine_uuid, operation_uuid)`, both FKs
+      `ON DELETE CASCADE`.
 
   All statements use `IF NOT EXISTS` guards — safe to run multiple times.
   `up/1` is cumulative: a single call (re-)applies every version's
@@ -62,7 +69,7 @@ defmodule PhoenixKitManufacturing.Migrations.Machines do
   ## Rollback
 
   `down/1` is a full, all-or-nothing rollback of everything this module has
-  ever created: it drops all three tables (`CASCADE`), which necessarily
+  ever created: it drops all five tables (`CASCADE`), which necessarily
   takes every version's columns down with them. It does **not** support
   incremental, per-version rollback — there is no "V2 -> V1, keeping V1
   data intact" path. Any `:version` key in `opts` is accepted for
@@ -73,7 +80,7 @@ defmodule PhoenixKitManufacturing.Migrations.Machines do
 
   @disable_ddl_transaction true
 
-  @current_version 2
+  @current_version 3
 
   @doc "Target schema version of the Manufacturing module."
   @spec current_version() :: pos_integer()
@@ -106,7 +113,8 @@ defmodule PhoenixKitManufacturing.Migrations.Machines do
   defp version_probes do
     [
       {1, &probe_v1?/1},
-      {2, &probe_v2?/1}
+      {2, &probe_v2?/1},
+      {3, &probe_v3?/1}
     ]
   end
 
@@ -140,6 +148,15 @@ defmodule PhoenixKitManufacturing.Migrations.Machines do
 
   defp probe_v2?(prefix) do
     Enum.all?(@v2_columns, fn {table, column} -> column_exists?(prefix, table, column) end)
+  end
+
+  # V3 created two new tables (the operations directory and the
+  # machine<->operation join) — check both, not just one representative,
+  # so a partial apply (e.g. PgBouncer dropping the second `CREATE TABLE`
+  # while the first commits) can never read back as "fully migrated to V3".
+  defp probe_v3?(prefix) do
+    table_exists?(prefix, "phoenix_kit_operations") and
+      table_exists?(prefix, "phoenix_kit_machine_operations")
   end
 
   @doc "Applies the Manufacturing module migration. Accepts a keyword list or map."
@@ -270,6 +287,49 @@ defmodule PhoenixKitManufacturing.Migrations.Machines do
     ADD COLUMN IF NOT EXISTS field_template JSONB NOT NULL DEFAULT '[]'
     """)
 
+    # --- V3: operations directory + machine<->operation M2M with norm override ---
+
+    execute("""
+    CREATE TABLE IF NOT EXISTS #{p}phoenix_kit_operations (
+      uuid UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
+      name VARCHAR(255) NOT NULL,
+      unit VARCHAR(50),
+      base_time_norm_seconds INTEGER,
+      status VARCHAR(20) NOT NULL DEFAULT 'active',
+      data JSONB NOT NULL DEFAULT '{}',
+      inserted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """)
+
+    execute("""
+    CREATE INDEX IF NOT EXISTS idx_operations_status
+    ON #{p}phoenix_kit_operations (status)
+    """)
+
+    execute("""
+    CREATE TABLE IF NOT EXISTS #{p}phoenix_kit_machine_operations (
+      uuid UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
+      machine_uuid UUID NOT NULL
+        REFERENCES #{p}phoenix_kit_machines (uuid) ON DELETE CASCADE,
+      operation_uuid UUID NOT NULL
+        REFERENCES #{p}phoenix_kit_operations (uuid) ON DELETE CASCADE,
+      time_norm_seconds INTEGER,
+      inserted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """)
+
+    execute("""
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_machine_operations_unique
+    ON #{p}phoenix_kit_machine_operations (machine_uuid, operation_uuid)
+    """)
+
+    execute("""
+    CREATE INDEX IF NOT EXISTS idx_machine_operations_operation
+    ON #{p}phoenix_kit_machine_operations (operation_uuid)
+    """)
+
     :ok
   end
 
@@ -291,8 +351,10 @@ defmodule PhoenixKitManufacturing.Migrations.Machines do
     p = prefix_str(normalize_prefix(opts))
 
     execute("DROP TABLE IF EXISTS #{p}phoenix_kit_machine_type_assignments CASCADE")
+    execute("DROP TABLE IF EXISTS #{p}phoenix_kit_machine_operations CASCADE")
     execute("DROP TABLE IF EXISTS #{p}phoenix_kit_machines CASCADE")
     execute("DROP TABLE IF EXISTS #{p}phoenix_kit_machine_types CASCADE")
+    execute("DROP TABLE IF EXISTS #{p}phoenix_kit_operations CASCADE")
 
     :ok
   end
