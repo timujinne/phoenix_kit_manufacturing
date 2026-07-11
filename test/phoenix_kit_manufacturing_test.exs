@@ -57,6 +57,8 @@ defmodule PhoenixKitManufacturingTest do
   end
 
   describe "admin_tabs/0" do
+    alias PhoenixKit.Dashboard.Tab
+
     test "returns a list of Tab structs with the parent first" do
       tabs = PhoenixKitManufacturing.admin_tabs()
       assert is_list(tabs)
@@ -143,17 +145,17 @@ defmodule PhoenixKitManufacturingTest do
       machines_tab =
         Enum.find(PhoenixKitManufacturing.admin_tabs(), &(&1.id == :manufacturing_machines))
 
-      refute PhoenixKit.Dashboard.Tab.matches_path?(
+      refute Tab.matches_path?(
                machines_tab,
                "manufacturing/machines/operations"
              )
 
-      refute PhoenixKit.Dashboard.Tab.matches_path?(
+      refute Tab.matches_path?(
                machines_tab,
                "manufacturing/machines/operations/new"
              )
 
-      refute PhoenixKit.Dashboard.Tab.matches_path?(
+      refute Tab.matches_path?(
                machines_tab,
                "manufacturing/machines/operations/018f0000-0000-7000-8000-000000000000/edit"
              )
@@ -163,17 +165,17 @@ defmodule PhoenixKitManufacturingTest do
       machines_tab =
         Enum.find(PhoenixKitManufacturing.admin_tabs(), &(&1.id == :manufacturing_machines))
 
-      refute PhoenixKit.Dashboard.Tab.matches_path?(
+      refute Tab.matches_path?(
                machines_tab,
                "manufacturing/machines/defect-reasons"
              )
 
-      refute PhoenixKit.Dashboard.Tab.matches_path?(
+      refute Tab.matches_path?(
                machines_tab,
                "manufacturing/machines/defect-reasons/new"
              )
 
-      refute PhoenixKit.Dashboard.Tab.matches_path?(
+      refute Tab.matches_path?(
                machines_tab,
                "manufacturing/machines/defect-reasons/018f0000-0000-7000-8000-000000000000/edit"
              )
