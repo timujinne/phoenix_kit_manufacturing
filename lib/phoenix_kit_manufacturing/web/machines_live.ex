@@ -17,10 +17,17 @@ defmodule PhoenixKitManufacturing.Web.MachinesLive do
       `table_default` treatment, symmetric to `:operations`; see
       `dev_docs/IMPLEMENTATION_PLAN.md` M32).
 
-  The Machines / Types / Operations / Defect Reasons switcher lives in the
-  PhoenixKit admin dashboard's subtab nav (`:manufacturing_machines` /
-  `:manufacturing_types` / `:manufacturing_operations` /
-  `:manufacturing_defect_reasons`), so it is not duplicated in the page body.
+  Admin-chrome pattern: self-wrapping render with `LayoutWrapper.app_layout`
+  so the active subtab's name/description land in the global admin header
+  (`page_title`/`page_subtitle`, see the `:self_wrapped_layout` on_mount and
+  `tab_title/1` / `tab_subtitle/1`) instead of an in-page header. The
+  Machines / Types / Operations / Defect Reasons switcher is a local
+  `tabs tabs-border` bar rendered under that header — same look as
+  `PhoenixKitWarehouse.Web.Components.WarehouseHeader` — in addition to
+  (not instead of) the PhoenixKit admin sidebar's own subtab nav
+  (`:manufacturing_machines` / `:manufacturing_types` /
+  `:manufacturing_operations` / `:manufacturing_defect_reasons`), same
+  dual-nav shape every other module's parent/subtab pair uses.
 
   ## Filtering UI
 
@@ -44,7 +51,6 @@ defmodule PhoenixKitManufacturing.Web.MachinesLive do
 
   require Logger
 
-  import PhoenixKitWeb.Components.Core.AdminPageHeader
   import PhoenixKitWeb.Components.Core.Icon
   import PhoenixKitWeb.Components.Core.Modal, only: [confirm_modal: 1]
   import PhoenixKitWeb.Components.Core.TableDefault
@@ -55,6 +61,16 @@ defmodule PhoenixKitManufacturing.Web.MachinesLive do
   alias PhoenixKitManufacturing.ColumnConfig.Machines, as: MachineColumnConfig
   alias PhoenixKitManufacturing.{DefectReasons, Errors, Machines, Operations, Paths}
   alias PhoenixKitManufacturing.Web.Components.ColumnModal
+
+  # Opt out of PhoenixKit's auto admin-chrome layout so this view self-wraps
+  # with `LayoutWrapper.app_layout` in render/1 — lets page_title/page_subtitle
+  # vary per subtab (set in handle_params/3) instead of being fixed at mount.
+  # Same pattern as PhoenixKitWarehouse.Web.StockLive.
+  on_mount({__MODULE__, :self_wrapped_layout})
+
+  def on_mount(:self_wrapped_layout, _params, _session, socket) do
+    {:cont, put_in(socket.private[:live_layout], {PhoenixKitWeb.Layouts, :app})}
+  end
 
   @impl true
   def mount(_params, _session, socket) do
@@ -68,6 +84,7 @@ defmodule PhoenixKitManufacturing.Web.MachinesLive do
     {:ok,
      assign(socket,
        page_title: gettext("Machines"),
+       page_subtitle: tab_subtitle(:index),
        machines: [],
        machine_types: [],
        operations: [],
@@ -100,6 +117,7 @@ defmodule PhoenixKitManufacturing.Web.MachinesLive do
       socket
       |> assign(:active_tab, action)
       |> assign(:page_title, tab_title(action))
+      |> assign(:page_subtitle, tab_subtitle(action))
       |> assign(:confirm_delete, nil)
       |> load_data(action)
 
@@ -478,301 +496,322 @@ defmodule PhoenixKitManufacturing.Web.MachinesLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="flex flex-col w-full px-4 py-6 gap-6">
-      <.admin_page_header title={tab_title(@active_tab)} subtitle={tab_subtitle(@active_tab)}>
-        <:actions>
-          <.link
-            :if={@active_tab == :index}
-            navigate={Paths.machine_new()}
-            class="btn btn-primary btn-sm"
-          >
-            <.icon name="hero-plus" class="w-4 h-4" /> {gettext("New Machine")}
-          </.link>
-          <.link
-            :if={@active_tab == :types}
-            navigate={Paths.type_new()}
-            class="btn btn-primary btn-sm"
-          >
-            <.icon name="hero-plus" class="w-4 h-4" /> {gettext("New Type")}
-          </.link>
-          <.link
-            :if={@active_tab == :operations}
-            navigate={Paths.operation_new()}
-            class="btn btn-primary btn-sm"
-          >
-            <.icon name="hero-plus" class="w-4 h-4" /> {gettext("New Operation")}
-          </.link>
-          <.link
-            :if={@active_tab == :defect_reasons}
-            navigate={Paths.defect_reason_new()}
-            class="btn btn-primary btn-sm"
-          >
-            <.icon name="hero-plus" class="w-4 h-4" /> {gettext("New Defect Reason")}
-          </.link>
-        </:actions>
-      </.admin_page_header>
+    <PhoenixKitWeb.Components.LayoutWrapper.app_layout
+      socket={@socket}
+      flash={@flash}
+      phoenix_kit_current_scope={assigns[:phoenix_kit_current_scope]}
+      page_title={@page_title}
+      page_subtitle={@page_subtitle}
+      current_path={assigns[:url_path] || assigns[:current_path] || Paths.machines()}
+      current_locale={assigns[:current_locale]}
+    >
+      <div class="flex flex-col w-full px-4 py-6 gap-6">
+        <.machines_tab_bar active={@active_tab} />
 
-      <div :if={@active_tab == :index}>
-        <.table_default
-          id="machines-list"
-          variant="zebra"
-          size="sm"
-          toggleable
-          items={@machines}
-          card_fields={
-            fn entry ->
-              meta_map = MachineColumnConfig.column_metadata_map()
+        <div :if={@active_tab == :index}>
+          <.table_default
+            id="machines-list"
+            variant="zebra"
+            size="sm"
+            toggleable
+            items={@machines}
+            card_fields={
+              fn entry ->
+                meta_map = MachineColumnConfig.column_metadata_map()
 
-              Enum.map(@selected_columns, fn col ->
-                %{label: column_label(meta_map, col), value: render_card_value(col, entry)}
-              end)
-            end
-          }
-        >
-          <:toolbar_title>
-            <div class="flex flex-col gap-2 min-w-0">
-              <div class="flex flex-wrap items-center gap-2">
-                <form id="machines-search" phx-change="search" class="contents">
-                  <label class="input input-sm w-full sm:w-64">
-                    <.icon name="hero-magnifying-glass" class="h-4 w-4 opacity-50" />
-                    <input
-                      type="search"
-                      name="search"
-                      value={@search}
-                      placeholder={gettext("Search...")}
-                      class="grow"
-                      phx-debounce="300"
-                    />
-                  </label>
-                </form>
+                Enum.map(@selected_columns, fn col ->
+                  %{label: column_label(meta_map, col), value: render_card_value(col, entry)}
+                end)
+              end
+            }
+          >
+            <:toolbar_title>
+              <div class="flex flex-col gap-2 min-w-0">
+                <div class="flex flex-wrap items-center gap-2">
+                  <form id="machines-search" phx-change="search" class="contents">
+                    <label class="input input-sm w-full sm:w-64">
+                      <.icon name="hero-magnifying-glass" class="h-4 w-4 opacity-50" />
+                      <input
+                        type="search"
+                        name="search"
+                        value={@search}
+                        placeholder={gettext("Search...")}
+                        class="grow"
+                        phx-debounce="300"
+                      />
+                    </label>
+                  </form>
 
-                <div
-                  :if={@active_filters != []}
-                  class="flex items-center gap-2 text-xs text-base-content/60"
-                >
-                  <span>
-                    {gettext("%{count} filters active",
-                      count: count_active_filters(@active_filters, @filter_values)
-                    )}
-                  </span>
-                  <button type="button" phx-click="clear_all_filters" class="btn btn-ghost btn-xs">
-                    {gettext("Reset")}
-                  </button>
+                  <div
+                    :if={@active_filters != []}
+                    class="flex items-center gap-2 text-xs text-base-content/60"
+                  >
+                    <span>
+                      {gettext("%{count} filters active",
+                        count: count_active_filters(@active_filters, @filter_values)
+                      )}
+                    </span>
+                    <button type="button" phx-click="clear_all_filters" class="btn btn-ghost btn-xs">
+                      {gettext("Reset")}
+                    </button>
+                  </div>
+                </div>
+
+                <div :if={@active_filters != []} class="flex flex-wrap items-center gap-3">
+                  <%= for id <- @active_filters,
+                            meta = Map.get(MachineColumnConfig.column_metadata_map(), id),
+                            meta do %>
+                    <div class="flex items-center gap-1">
+                      <span class="text-xs text-base-content/50 whitespace-nowrap">
+                        {meta.label.()}:
+                      </span>
+                      <.filter_input meta={meta} value={Map.get(@filter_values, id)} entries={@machines} />
+                    </div>
+                  <% end %>
                 </div>
               </div>
+            </:toolbar_title>
 
-              <div :if={@active_filters != []} class="flex flex-wrap items-center gap-3">
-                <%= for id <- @active_filters,
-                          meta = Map.get(MachineColumnConfig.column_metadata_map(), id),
-                          meta do %>
-                  <div class="flex items-center gap-1">
-                    <span class="text-xs text-base-content/50 whitespace-nowrap">
-                      {meta.label.()}:
-                    </span>
-                    <.filter_input meta={meta} value={Map.get(@filter_values, id)} entries={@machines} />
-                  </div>
-                <% end %>
-              </div>
-            </div>
-          </:toolbar_title>
+            <:toolbar_actions>
+              <.link navigate={Paths.machine_new()} class="btn btn-primary btn-sm">
+                <.icon name="hero-plus" class="w-4 h-4" /> {gettext("New Machine")}
+              </.link>
 
-          <:toolbar_actions>
-            <span class="text-sm text-base-content/70 whitespace-nowrap">{gettext("Sort by:")}</span>
-            <form id="machines-sort" phx-change="set_sort" class="join">
-              <select name="sort_by" class="select select-sm join-item">
-                <option
-                  :for={meta <- sortable_visible(@selected_columns)}
-                  value={meta.id}
-                  selected={@sort_by == meta.id}
+              <span class="text-sm text-base-content/70 whitespace-nowrap">{gettext("Sort by:")}</span>
+              <form id="machines-sort" phx-change="set_sort" class="join">
+                <select name="sort_by" class="select select-sm join-item">
+                  <option
+                    :for={meta <- sortable_visible(@selected_columns)}
+                    value={meta.id}
+                    selected={@sort_by == meta.id}
+                  >
+                    {meta.label.()}
+                  </option>
+                </select>
+                <button
+                  type="button"
+                  phx-click="flip_sort_dir"
+                  class="btn btn-sm btn-ghost join-item"
+                  title={
+                    if @sort_dir == :asc,
+                      do: gettext("Ascending"),
+                      else: gettext("Descending")
+                  }
                 >
-                  {meta.label.()}
-                </option>
-              </select>
+                  <.icon
+                    name={if @sort_dir == :asc, do: "hero-chevron-up", else: "hero-chevron-down"}
+                    class="w-4 h-4"
+                  />
+                </button>
+              </form>
+
               <button
                 type="button"
-                phx-click="flip_sort_dir"
-                class="btn btn-sm btn-ghost join-item"
-                title={
-                  if @sort_dir == :asc,
-                    do: gettext("Ascending"),
-                    else: gettext("Descending")
-                }
+                class="btn btn-outline btn-sm"
+                phx-click="show_column_modal"
+                title={gettext("Customize columns")}
               >
-                <.icon
-                  name={if @sort_dir == :asc, do: "hero-chevron-up", else: "hero-chevron-down"}
-                  class="w-4 h-4"
-                />
+                <.icon name="hero-adjustments-horizontal" class="w-4 h-4" />
+                <span class="hidden sm:inline">{gettext("Columns")}</span>
               </button>
-            </form>
+            </:toolbar_actions>
 
-            <button
-              type="button"
-              class="btn btn-outline btn-sm"
-              phx-click="show_column_modal"
-              title={gettext("Customize columns")}
-            >
-              <.icon name="hero-adjustments-horizontal" class="w-4 h-4" />
-              <span class="hidden sm:inline">{gettext("Columns")}</span>
-            </button>
-          </:toolbar_actions>
-
-          <:card_header :let={entry}>
-            <div class="flex items-center gap-2 min-w-0">
-              <.machine_thumbnail machine={entry} />
-              <.link
-                navigate={Paths.machine_edit(entry.uuid)}
-                class="font-medium text-sm link link-hover truncate min-w-0"
-              >
-                {entry.name}
-              </.link>
-            </div>
-          </:card_header>
-          <:card_actions :let={entry}>
-            <.link navigate={Paths.machine_edit(entry.uuid)} class="btn btn-ghost btn-xs">
-              {gettext("Edit")}
-            </.link>
-            <button
-              phx-click="show_delete_confirm"
-              phx-value-uuid={entry.uuid}
-              phx-value-type="machine"
-              class="btn btn-ghost btn-xs text-error"
-            >
-              {gettext("Delete")}
-            </button>
-          </:card_actions>
-
-          <.table_default_header>
-            <.table_default_row hover={false}>
-              <% meta_map = MachineColumnConfig.column_metadata_map() %>
-              <%= for col <- @selected_columns, meta = Map.get(meta_map, col), meta do %>
-                <.table_default_header_cell class={if meta.align == :right, do: "text-right"}>
-                  <%= if meta.sortable? do %>
-                    <.sort_header
-                      by={meta.id}
-                      label={meta.label.()}
-                      sort_by={@sort_by}
-                      sort_dir={@sort_dir}
-                      align={meta.align}
-                    />
-                  <% else %>
-                    {meta.label.()}
-                  <% end %>
-                </.table_default_header_cell>
-              <% end %>
-              <.table_default_header_cell class="text-right whitespace-nowrap">
-                {gettext("Actions")}
-              </.table_default_header_cell>
-            </.table_default_row>
-          </.table_default_header>
-
-          <.table_default_body>
-            <%= if @machines == [] do %>
-              <.table_default_row hover={false}>
-                <.table_default_cell
-                  colspan={length(@selected_columns) + 1}
-                  class="text-center py-10 text-base-content/50"
+            <:card_header :let={entry}>
+              <div class="flex items-center gap-2 min-w-0">
+                <.machine_thumbnail machine={entry} />
+                <.link
+                  navigate={Paths.machine_edit(entry.uuid)}
+                  class="font-medium text-sm link link-hover truncate min-w-0"
                 >
-                  <.icon name="hero-cog-6-tooth" class="h-10 w-10 mx-auto mb-2 opacity-50" />
-                  <div class="text-sm font-medium">{gettext("No machines yet.")}</div>
-                </.table_default_cell>
-              </.table_default_row>
-            <% end %>
-            <%= for entry <- @machines do %>
-              <.table_default_row>
+                  {entry.name}
+                </.link>
+              </div>
+            </:card_header>
+            <:card_actions :let={entry}>
+              <.link navigate={Paths.machine_edit(entry.uuid)} class="btn btn-ghost btn-xs">
+                {gettext("Edit")}
+              </.link>
+              <button
+                phx-click="show_delete_confirm"
+                phx-value-uuid={entry.uuid}
+                phx-value-type="machine"
+                class="btn btn-ghost btn-xs text-error"
+              >
+                {gettext("Delete")}
+              </button>
+            </:card_actions>
+
+            <.table_default_header>
+              <.table_default_row hover={false}>
                 <% meta_map = MachineColumnConfig.column_metadata_map() %>
                 <%= for col <- @selected_columns, meta = Map.get(meta_map, col), meta do %>
-                  <.table_default_cell class={cell_class(meta)}>
-                    {render_cell(col, entry)}
-                  </.table_default_cell>
+                  <.table_default_header_cell class={if meta.align == :right, do: "text-right"}>
+                    <%= if meta.sortable? do %>
+                      <.sort_header
+                        by={meta.id}
+                        label={meta.label.()}
+                        sort_by={@sort_by}
+                        sort_dir={@sort_dir}
+                        align={meta.align}
+                      />
+                    <% else %>
+                      {meta.label.()}
+                    <% end %>
+                  </.table_default_header_cell>
                 <% end %>
-                <.table_default_cell class="text-right whitespace-nowrap">
-                  <.table_row_menu mode="dropdown" id={"machine-menu-#{entry.uuid}"}>
-                    <.table_row_menu_link
-                      navigate={Paths.machine_edit(entry.uuid)}
-                      icon="hero-pencil"
-                      label={gettext("Edit")}
-                    />
-                    <.table_row_menu_divider />
-                    <.table_row_menu_button
-                      phx-click="show_delete_confirm"
-                      phx-value-uuid={entry.uuid}
-                      phx-value-type="machine"
-                      icon="hero-trash"
-                      label={gettext("Delete")}
-                      variant="error"
-                    />
-                  </.table_row_menu>
-                </.table_default_cell>
+                <.table_default_header_cell class="text-right whitespace-nowrap">
+                  {gettext("Actions")}
+                </.table_default_header_cell>
               </.table_default_row>
-            <% end %>
-          </.table_default_body>
-        </.table_default>
+            </.table_default_header>
 
-        <ColumnModal.column_modal
-          show={@show_column_modal}
-          column_config={MachineColumnConfig}
-          selected={@selected_columns}
-          active_filters={@active_filters}
-          temp_selected={@temp_selected_columns}
-          temp_active_filters={@temp_active_filters}
+            <.table_default_body>
+              <%= if @machines == [] do %>
+                <.table_default_row hover={false}>
+                  <.table_default_cell
+                    colspan={length(@selected_columns) + 1}
+                    class="text-center py-10 text-base-content/50"
+                  >
+                    <.icon name="hero-cog-6-tooth" class="h-10 w-10 mx-auto mb-2 opacity-50" />
+                    <div class="text-sm font-medium">{gettext("No machines yet.")}</div>
+                  </.table_default_cell>
+                </.table_default_row>
+              <% end %>
+              <%= for entry <- @machines do %>
+                <.table_default_row>
+                  <% meta_map = MachineColumnConfig.column_metadata_map() %>
+                  <%= for col <- @selected_columns, meta = Map.get(meta_map, col), meta do %>
+                    <.table_default_cell class={cell_class(meta)}>
+                      {render_cell(col, entry)}
+                    </.table_default_cell>
+                  <% end %>
+                  <.table_default_cell class="text-right whitespace-nowrap">
+                    <.table_row_menu mode="dropdown" id={"machine-menu-#{entry.uuid}"}>
+                      <.table_row_menu_link
+                        navigate={Paths.machine_edit(entry.uuid)}
+                        icon="hero-pencil"
+                        label={gettext("Edit")}
+                      />
+                      <.table_row_menu_divider />
+                      <.table_row_menu_button
+                        phx-click="show_delete_confirm"
+                        phx-value-uuid={entry.uuid}
+                        phx-value-type="machine"
+                        icon="hero-trash"
+                        label={gettext("Delete")}
+                        variant="error"
+                      />
+                    </.table_row_menu>
+                  </.table_default_cell>
+                </.table_default_row>
+              <% end %>
+            </.table_default_body>
+          </.table_default>
+
+          <ColumnModal.column_modal
+            show={@show_column_modal}
+            column_config={MachineColumnConfig}
+            selected={@selected_columns}
+            active_filters={@active_filters}
+            temp_selected={@temp_selected_columns}
+            temp_active_filters={@temp_active_filters}
+          />
+        </div>
+
+        <div :if={@active_tab == :types}>
+          <.types_table machine_types={@machine_types} />
+        </div>
+
+        <div :if={@active_tab == :operations}>
+          <.operations_table operations={@operations} />
+        </div>
+
+        <div :if={@active_tab == :defect_reasons}>
+          <.defect_reasons_table defect_reasons={@defect_reasons} />
+        </div>
+
+        <.confirm_modal
+          show={match?({"machine", _}, @confirm_delete)}
+          on_confirm="delete_machine"
+          on_cancel="cancel_delete"
+          title={gettext("Delete Machine")}
+          title_icon="hero-trash"
+          messages={[{:warning, gettext("This will permanently delete this machine. This cannot be undone.")}]}
+          confirm_text={gettext("Delete")}
+          danger={true}
+        />
+
+        <.confirm_modal
+          show={match?({"machine_type", _}, @confirm_delete)}
+          on_confirm="delete_machine_type"
+          on_cancel="cancel_delete"
+          title={gettext("Delete Machine Type")}
+          title_icon="hero-trash"
+          messages={[{:warning, gettext("This will permanently delete this machine type. Machines using it will lose the type association.")}]}
+          confirm_text={gettext("Delete")}
+          danger={true}
+        />
+
+        <.confirm_modal
+          show={match?({"operation", _}, @confirm_delete)}
+          on_confirm="delete_operation"
+          on_cancel="cancel_delete"
+          title={gettext("Delete Operation")}
+          title_icon="hero-trash"
+          messages={[{:warning, gettext("This will permanently delete this operation. Machines using it will lose the link.")}]}
+          confirm_text={gettext("Delete")}
+          danger={true}
+        />
+
+        <.confirm_modal
+          show={match?({"defect_reason", _}, @confirm_delete)}
+          on_confirm="delete_defect_reason"
+          on_cancel="cancel_delete"
+          title={gettext("Delete Defect Reason")}
+          title_icon="hero-trash"
+          messages={[{:warning, gettext("This will permanently delete this defect reason. This cannot be undone.")}]}
+          confirm_text={gettext("Delete")}
+          danger={true}
         />
       </div>
+    </PhoenixKitWeb.Components.LayoutWrapper.app_layout>
+    """
+  end
 
-      <div :if={@active_tab == :types}>
-        <.types_table machine_types={@machine_types} />
-      </div>
+  attr(:active, :atom, required: true)
 
-      <div :if={@active_tab == :operations}>
-        <.operations_table operations={@operations} />
-      </div>
-
-      <div :if={@active_tab == :defect_reasons}>
-        <.defect_reasons_table defect_reasons={@defect_reasons} />
-      </div>
-
-      <.confirm_modal
-        show={match?({"machine", _}, @confirm_delete)}
-        on_confirm="delete_machine"
-        on_cancel="cancel_delete"
-        title={gettext("Delete Machine")}
-        title_icon="hero-trash"
-        messages={[{:warning, gettext("This will permanently delete this machine. This cannot be undone.")}]}
-        confirm_text={gettext("Delete")}
-        danger={true}
-      />
-
-      <.confirm_modal
-        show={match?({"machine_type", _}, @confirm_delete)}
-        on_confirm="delete_machine_type"
-        on_cancel="cancel_delete"
-        title={gettext("Delete Machine Type")}
-        title_icon="hero-trash"
-        messages={[{:warning, gettext("This will permanently delete this machine type. Machines using it will lose the type association.")}]}
-        confirm_text={gettext("Delete")}
-        danger={true}
-      />
-
-      <.confirm_modal
-        show={match?({"operation", _}, @confirm_delete)}
-        on_confirm="delete_operation"
-        on_cancel="cancel_delete"
-        title={gettext("Delete Operation")}
-        title_icon="hero-trash"
-        messages={[{:warning, gettext("This will permanently delete this operation. Machines using it will lose the link.")}]}
-        confirm_text={gettext("Delete")}
-        danger={true}
-      />
-
-      <.confirm_modal
-        show={match?({"defect_reason", _}, @confirm_delete)}
-        on_confirm="delete_defect_reason"
-        on_cancel="cancel_delete"
-        title={gettext("Delete Defect Reason")}
-        title_icon="hero-trash"
-        messages={[{:warning, gettext("This will permanently delete this defect reason. This cannot be undone.")}]}
-        confirm_text={gettext("Delete")}
-        danger={true}
-      />
+  # Local subtab switcher, styled/structured like
+  # `PhoenixKitWarehouse.Web.Components.WarehouseHeader` — a `tabs
+  # tabs-border` bar under the self-wrapped global header. `navigate` (not
+  # `patch`) because each subtab is a distinct route (see moduledoc); the
+  # active tab id matches `@active_tab`/`live_action` exactly.
+  defp machines_tab_bar(assigns) do
+    ~H"""
+    <div role="tablist" class="tabs tabs-border">
+      <.link
+        role="tab"
+        navigate={Paths.machines()}
+        class={["tab", @active == :index && "tab-active"]}
+      >
+        {gettext("Machines")}
+      </.link>
+      <.link role="tab" navigate={Paths.types()} class={["tab", @active == :types && "tab-active"]}>
+        {gettext("Types")}
+      </.link>
+      <.link
+        role="tab"
+        navigate={Paths.operations()}
+        class={["tab", @active == :operations && "tab-active"]}
+      >
+        {gettext("Operations")}
+      </.link>
+      <.link
+        role="tab"
+        navigate={Paths.defect_reasons()}
+        class={["tab", @active == :defect_reasons && "tab-active"]}
+      >
+        {gettext("Defect Reasons")}
+      </.link>
     </div>
     """
   end
@@ -1028,192 +1067,211 @@ defmodule PhoenixKitManufacturing.Web.MachinesLive do
     |> Enum.map_join(":", &(&1 |> Integer.to_string() |> String.pad_leading(2, "0")))
   end
 
+  # Always renders `<.table_default>` (rather than gating it behind a
+  # `@machine_types != []` check) so the New Type button in `:toolbar_actions`
+  # stays reachable from an empty list — same shape as the `:index` tab's
+  # `machines-list` table, whose "No machines yet." message is likewise an
+  # in-table row, not a standalone empty-state card.
   defp types_table(assigns) do
     ~H"""
-    <div :if={@machine_types == []} class="card bg-base-100 shadow">
-      <div class="card-body items-center text-center py-12">
-        <p class="text-base-content/60">{gettext("No machine types yet.")}</p>
-      </div>
-    </div>
+    <.table_default
+      variant="zebra"
+      size="sm"
+      toggleable={true}
+      id="machine-types-list"
+      items={@machine_types}
+      card_fields={
+        fn t ->
+          [
+            %{label: gettext("Description"), value: t.description || "—"},
+            %{label: gettext("Status"), value: status_label(t.status)}
+          ]
+        end
+      }
+    >
+      <:toolbar_actions>
+        <.link navigate={Paths.type_new()} class="btn btn-primary btn-sm">
+          <.icon name="hero-plus" class="w-4 h-4" /> {gettext("New Type")}
+        </.link>
+      </:toolbar_actions>
 
-    <div :if={@machine_types != []}>
-      <.table_default
-        variant="zebra"
-        size="sm"
-        toggleable={true}
-        id="machine-types-list"
-        items={@machine_types}
-        card_fields={
-          fn t ->
-            [
-              %{label: gettext("Description"), value: t.description || "—"},
-              %{label: gettext("Status"), value: status_label(t.status)}
-            ]
-          end
-        }
-      >
-        <.table_default_header>
-          <.table_default_row>
-            <.table_default_header_cell>{gettext("Name")}</.table_default_header_cell>
-            <.table_default_header_cell>{gettext("Description")}</.table_default_header_cell>
-            <.table_default_header_cell>{gettext("Status")}</.table_default_header_cell>
-            <.table_default_header_cell class="text-right whitespace-nowrap">
-              {gettext("Actions")}
-            </.table_default_header_cell>
-          </.table_default_row>
-        </.table_default_header>
-        <.table_default_body>
-          <.table_default_row :for={t <- @machine_types}>
-            <.table_default_cell>
-              <.link navigate={Paths.type_edit(t.uuid)} class="link link-hover font-medium">
-                {t.name}
-              </.link>
-            </.table_default_cell>
-            <.table_default_cell class="text-sm text-base-content/60">
-              {t.description || "—"}
-            </.table_default_cell>
-            <.table_default_cell>
-              <span class={["badge badge-sm", status_badge_class(t.status)]}>
-                {status_label(t.status)}
-              </span>
-            </.table_default_cell>
-            <.table_default_cell class="text-right whitespace-nowrap">
-              <.table_row_menu mode="dropdown" id={"type-menu-#{t.uuid}"}>
-                <.table_row_menu_link
-                  navigate={Paths.type_edit(t.uuid)}
-                  icon="hero-pencil"
-                  label={gettext("Edit")}
-                />
-                <.table_row_menu_divider />
-                <.table_row_menu_button
-                  phx-click="show_delete_confirm"
-                  phx-value-uuid={t.uuid}
-                  phx-value-type="machine_type"
-                  icon="hero-trash"
-                  label={gettext("Delete")}
-                  variant="error"
-                />
-              </.table_row_menu>
+      <.table_default_header>
+        <.table_default_row>
+          <.table_default_header_cell>{gettext("Name")}</.table_default_header_cell>
+          <.table_default_header_cell>{gettext("Description")}</.table_default_header_cell>
+          <.table_default_header_cell>{gettext("Status")}</.table_default_header_cell>
+          <.table_default_header_cell class="text-right whitespace-nowrap">
+            {gettext("Actions")}
+          </.table_default_header_cell>
+        </.table_default_row>
+      </.table_default_header>
+      <.table_default_body>
+        <%= if @machine_types == [] do %>
+          <.table_default_row hover={false}>
+            <.table_default_cell colspan={4} class="text-center py-10 text-base-content/50">
+              <.icon name="hero-tag" class="h-10 w-10 mx-auto mb-2 opacity-50" />
+              <div class="text-sm font-medium">{gettext("No machine types yet.")}</div>
             </.table_default_cell>
           </.table_default_row>
-        </.table_default_body>
-        <:card_header :let={t}>
-          <.link navigate={Paths.type_edit(t.uuid)} class="font-medium text-sm link link-hover">
-            {t.name}
-          </.link>
-        </:card_header>
-        <:card_actions :let={t}>
-          <.link navigate={Paths.type_edit(t.uuid)} class="btn btn-ghost btn-xs">
-            {gettext("Edit")}
-          </.link>
-          <button
-            phx-click="show_delete_confirm"
-            phx-value-uuid={t.uuid}
-            phx-value-type="machine_type"
-            class="btn btn-ghost btn-xs text-error"
-          >
-            {gettext("Delete")}
-          </button>
-        </:card_actions>
-      </.table_default>
-    </div>
+        <% end %>
+        <.table_default_row :for={t <- @machine_types}>
+          <.table_default_cell>
+            <.link navigate={Paths.type_edit(t.uuid)} class="link link-hover font-medium">
+              {t.name}
+            </.link>
+          </.table_default_cell>
+          <.table_default_cell class="text-sm text-base-content/60">
+            {t.description || "—"}
+          </.table_default_cell>
+          <.table_default_cell>
+            <span class={["badge badge-sm", status_badge_class(t.status)]}>
+              {status_label(t.status)}
+            </span>
+          </.table_default_cell>
+          <.table_default_cell class="text-right whitespace-nowrap">
+            <.table_row_menu mode="dropdown" id={"type-menu-#{t.uuid}"}>
+              <.table_row_menu_link
+                navigate={Paths.type_edit(t.uuid)}
+                icon="hero-pencil"
+                label={gettext("Edit")}
+              />
+              <.table_row_menu_divider />
+              <.table_row_menu_button
+                phx-click="show_delete_confirm"
+                phx-value-uuid={t.uuid}
+                phx-value-type="machine_type"
+                icon="hero-trash"
+                label={gettext("Delete")}
+                variant="error"
+              />
+            </.table_row_menu>
+          </.table_default_cell>
+        </.table_default_row>
+      </.table_default_body>
+      <:card_header :let={t}>
+        <.link navigate={Paths.type_edit(t.uuid)} class="font-medium text-sm link link-hover">
+          {t.name}
+        </.link>
+      </:card_header>
+      <:card_actions :let={t}>
+        <.link navigate={Paths.type_edit(t.uuid)} class="btn btn-ghost btn-xs">
+          {gettext("Edit")}
+        </.link>
+        <button
+          phx-click="show_delete_confirm"
+          phx-value-uuid={t.uuid}
+          phx-value-type="machine_type"
+          class="btn btn-ghost btn-xs text-error"
+        >
+          {gettext("Delete")}
+        </button>
+      </:card_actions>
+    </.table_default>
     """
   end
 
+  # Always renders `<.table_default>` — see `types_table/1`'s comment for
+  # why (New Operation button reachability from an empty list).
   defp operations_table(assigns) do
     ~H"""
-    <div :if={@operations == []} class="card bg-base-100 shadow">
-      <div class="card-body items-center text-center py-12">
-        <p class="text-base-content/60">{gettext("No operations yet.")}</p>
-      </div>
-    </div>
+    <.table_default
+      variant="zebra"
+      size="sm"
+      toggleable={true}
+      id="operations-list"
+      items={@operations}
+      card_fields={
+        fn o ->
+          [
+            %{label: gettext("Unit"), value: o.unit || "—"},
+            %{label: gettext("Base norm"), value: format_duration(o.base_time_norm_seconds)},
+            %{label: gettext("Status"), value: status_label(o.status)}
+          ]
+        end
+      }
+    >
+      <:toolbar_actions>
+        <.link navigate={Paths.operation_new()} class="btn btn-primary btn-sm">
+          <.icon name="hero-plus" class="w-4 h-4" /> {gettext("New Operation")}
+        </.link>
+      </:toolbar_actions>
 
-    <div :if={@operations != []}>
-      <.table_default
-        variant="zebra"
-        size="sm"
-        toggleable={true}
-        id="operations-list"
-        items={@operations}
-        card_fields={
-          fn o ->
-            [
-              %{label: gettext("Unit"), value: o.unit || "—"},
-              %{label: gettext("Base norm"), value: format_duration(o.base_time_norm_seconds)},
-              %{label: gettext("Status"), value: status_label(o.status)}
-            ]
-          end
-        }
-      >
-        <.table_default_header>
-          <.table_default_row>
-            <.table_default_header_cell>{gettext("Name")}</.table_default_header_cell>
-            <.table_default_header_cell>{gettext("Unit")}</.table_default_header_cell>
-            <.table_default_header_cell>{gettext("Base norm")}</.table_default_header_cell>
-            <.table_default_header_cell>{gettext("Status")}</.table_default_header_cell>
-            <.table_default_header_cell class="text-right whitespace-nowrap">
-              {gettext("Actions")}
-            </.table_default_header_cell>
-          </.table_default_row>
-        </.table_default_header>
-        <.table_default_body>
-          <.table_default_row :for={o <- @operations}>
-            <.table_default_cell>
-              <.link navigate={Paths.operation_edit(o.uuid)} class="link link-hover font-medium">
-                {o.name}
-              </.link>
-            </.table_default_cell>
-            <.table_default_cell class="text-sm text-base-content/60">
-              {o.unit || "—"}
-            </.table_default_cell>
-            <.table_default_cell class="text-sm text-base-content/60">
-              {format_duration(o.base_time_norm_seconds)}
-            </.table_default_cell>
-            <.table_default_cell>
-              <span class={["badge badge-sm", status_badge_class(o.status)]}>
-                {status_label(o.status)}
-              </span>
-            </.table_default_cell>
-            <.table_default_cell class="text-right whitespace-nowrap">
-              <.table_row_menu mode="dropdown" id={"operation-menu-#{o.uuid}"}>
-                <.table_row_menu_link
-                  navigate={Paths.operation_edit(o.uuid)}
-                  icon="hero-pencil"
-                  label={gettext("Edit")}
-                />
-                <.table_row_menu_divider />
-                <.table_row_menu_button
-                  phx-click="show_delete_confirm"
-                  phx-value-uuid={o.uuid}
-                  phx-value-type="operation"
-                  icon="hero-trash"
-                  label={gettext("Delete")}
-                  variant="error"
-                />
-              </.table_row_menu>
+      <.table_default_header>
+        <.table_default_row>
+          <.table_default_header_cell>{gettext("Name")}</.table_default_header_cell>
+          <.table_default_header_cell>{gettext("Unit")}</.table_default_header_cell>
+          <.table_default_header_cell>{gettext("Base norm")}</.table_default_header_cell>
+          <.table_default_header_cell>{gettext("Status")}</.table_default_header_cell>
+          <.table_default_header_cell class="text-right whitespace-nowrap">
+            {gettext("Actions")}
+          </.table_default_header_cell>
+        </.table_default_row>
+      </.table_default_header>
+      <.table_default_body>
+        <%= if @operations == [] do %>
+          <.table_default_row hover={false}>
+            <.table_default_cell colspan={5} class="text-center py-10 text-base-content/50">
+              <.icon name="hero-clock" class="h-10 w-10 mx-auto mb-2 opacity-50" />
+              <div class="text-sm font-medium">{gettext("No operations yet.")}</div>
             </.table_default_cell>
           </.table_default_row>
-        </.table_default_body>
-        <:card_header :let={o}>
-          <.link navigate={Paths.operation_edit(o.uuid)} class="font-medium text-sm link link-hover">
-            {o.name}
-          </.link>
-        </:card_header>
-        <:card_actions :let={o}>
-          <.link navigate={Paths.operation_edit(o.uuid)} class="btn btn-ghost btn-xs">
-            {gettext("Edit")}
-          </.link>
-          <button
-            phx-click="show_delete_confirm"
-            phx-value-uuid={o.uuid}
-            phx-value-type="operation"
-            class="btn btn-ghost btn-xs text-error"
-          >
-            {gettext("Delete")}
-          </button>
-        </:card_actions>
-      </.table_default>
-    </div>
+        <% end %>
+        <.table_default_row :for={o <- @operations}>
+          <.table_default_cell>
+            <.link navigate={Paths.operation_edit(o.uuid)} class="link link-hover font-medium">
+              {o.name}
+            </.link>
+          </.table_default_cell>
+          <.table_default_cell class="text-sm text-base-content/60">
+            {o.unit || "—"}
+          </.table_default_cell>
+          <.table_default_cell class="text-sm text-base-content/60">
+            {format_duration(o.base_time_norm_seconds)}
+          </.table_default_cell>
+          <.table_default_cell>
+            <span class={["badge badge-sm", status_badge_class(o.status)]}>
+              {status_label(o.status)}
+            </span>
+          </.table_default_cell>
+          <.table_default_cell class="text-right whitespace-nowrap">
+            <.table_row_menu mode="dropdown" id={"operation-menu-#{o.uuid}"}>
+              <.table_row_menu_link
+                navigate={Paths.operation_edit(o.uuid)}
+                icon="hero-pencil"
+                label={gettext("Edit")}
+              />
+              <.table_row_menu_divider />
+              <.table_row_menu_button
+                phx-click="show_delete_confirm"
+                phx-value-uuid={o.uuid}
+                phx-value-type="operation"
+                icon="hero-trash"
+                label={gettext("Delete")}
+                variant="error"
+              />
+            </.table_row_menu>
+          </.table_default_cell>
+        </.table_default_row>
+      </.table_default_body>
+      <:card_header :let={o}>
+        <.link navigate={Paths.operation_edit(o.uuid)} class="font-medium text-sm link link-hover">
+          {o.name}
+        </.link>
+      </:card_header>
+      <:card_actions :let={o}>
+        <.link navigate={Paths.operation_edit(o.uuid)} class="btn btn-ghost btn-xs">
+          {gettext("Edit")}
+        </.link>
+        <button
+          phx-click="show_delete_confirm"
+          phx-value-uuid={o.uuid}
+          phx-value-type="operation"
+          class="btn btn-ghost btn-xs text-error"
+        >
+          {gettext("Delete")}
+        </button>
+      </:card_actions>
+    </.table_default>
     """
   end
 
@@ -1221,96 +1279,104 @@ defmodule PhoenixKitManufacturing.Web.MachinesLive do
   # not `operations_table/1` — `DefectReason` has the same
   # name/description/status shape as `MachineType` (see
   # `Schemas.DefectReason`'s moduledoc), no `Operation`-style unit/norm
-  # fields.
+  # fields. Always renders `<.table_default>` — see `types_table/1`'s
+  # comment for why (New Defect Reason button reachability from an empty
+  # list).
   defp defect_reasons_table(assigns) do
     ~H"""
-    <div :if={@defect_reasons == []} class="card bg-base-100 shadow">
-      <div class="card-body items-center text-center py-12">
-        <p class="text-base-content/60">{gettext("No defect reasons yet.")}</p>
-      </div>
-    </div>
+    <.table_default
+      variant="zebra"
+      size="sm"
+      toggleable={true}
+      id="defect-reasons-list"
+      items={@defect_reasons}
+      card_fields={
+        fn d ->
+          [
+            %{label: gettext("Description"), value: d.description || "—"},
+            %{label: gettext("Status"), value: status_label(d.status)}
+          ]
+        end
+      }
+    >
+      <:toolbar_actions>
+        <.link navigate={Paths.defect_reason_new()} class="btn btn-primary btn-sm">
+          <.icon name="hero-plus" class="w-4 h-4" /> {gettext("New Defect Reason")}
+        </.link>
+      </:toolbar_actions>
 
-    <div :if={@defect_reasons != []}>
-      <.table_default
-        variant="zebra"
-        size="sm"
-        toggleable={true}
-        id="defect-reasons-list"
-        items={@defect_reasons}
-        card_fields={
-          fn d ->
-            [
-              %{label: gettext("Description"), value: d.description || "—"},
-              %{label: gettext("Status"), value: status_label(d.status)}
-            ]
-          end
-        }
-      >
-        <.table_default_header>
-          <.table_default_row>
-            <.table_default_header_cell>{gettext("Name")}</.table_default_header_cell>
-            <.table_default_header_cell>{gettext("Description")}</.table_default_header_cell>
-            <.table_default_header_cell>{gettext("Status")}</.table_default_header_cell>
-            <.table_default_header_cell class="text-right whitespace-nowrap">
-              {gettext("Actions")}
-            </.table_default_header_cell>
-          </.table_default_row>
-        </.table_default_header>
-        <.table_default_body>
-          <.table_default_row :for={d <- @defect_reasons}>
-            <.table_default_cell>
-              <.link navigate={Paths.defect_reason_edit(d.uuid)} class="link link-hover font-medium">
-                {d.name}
-              </.link>
-            </.table_default_cell>
-            <.table_default_cell class="text-sm text-base-content/60">
-              {d.description || "—"}
-            </.table_default_cell>
-            <.table_default_cell>
-              <span class={["badge badge-sm", status_badge_class(d.status)]}>
-                {status_label(d.status)}
-              </span>
-            </.table_default_cell>
-            <.table_default_cell class="text-right whitespace-nowrap">
-              <.table_row_menu mode="dropdown" id={"defect-reason-menu-#{d.uuid}"}>
-                <.table_row_menu_link
-                  navigate={Paths.defect_reason_edit(d.uuid)}
-                  icon="hero-pencil"
-                  label={gettext("Edit")}
-                />
-                <.table_row_menu_divider />
-                <.table_row_menu_button
-                  phx-click="show_delete_confirm"
-                  phx-value-uuid={d.uuid}
-                  phx-value-type="defect_reason"
-                  icon="hero-trash"
-                  label={gettext("Delete")}
-                  variant="error"
-                />
-              </.table_row_menu>
+      <.table_default_header>
+        <.table_default_row>
+          <.table_default_header_cell>{gettext("Name")}</.table_default_header_cell>
+          <.table_default_header_cell>{gettext("Description")}</.table_default_header_cell>
+          <.table_default_header_cell>{gettext("Status")}</.table_default_header_cell>
+          <.table_default_header_cell class="text-right whitespace-nowrap">
+            {gettext("Actions")}
+          </.table_default_header_cell>
+        </.table_default_row>
+      </.table_default_header>
+      <.table_default_body>
+        <%= if @defect_reasons == [] do %>
+          <.table_default_row hover={false}>
+            <.table_default_cell colspan={4} class="text-center py-10 text-base-content/50">
+              <.icon name="hero-exclamation-triangle" class="h-10 w-10 mx-auto mb-2 opacity-50" />
+              <div class="text-sm font-medium">{gettext("No defect reasons yet.")}</div>
             </.table_default_cell>
           </.table_default_row>
-        </.table_default_body>
-        <:card_header :let={d}>
-          <.link navigate={Paths.defect_reason_edit(d.uuid)} class="font-medium text-sm link link-hover">
-            {d.name}
-          </.link>
-        </:card_header>
-        <:card_actions :let={d}>
-          <.link navigate={Paths.defect_reason_edit(d.uuid)} class="btn btn-ghost btn-xs">
-            {gettext("Edit")}
-          </.link>
-          <button
-            phx-click="show_delete_confirm"
-            phx-value-uuid={d.uuid}
-            phx-value-type="defect_reason"
-            class="btn btn-ghost btn-xs text-error"
-          >
-            {gettext("Delete")}
-          </button>
-        </:card_actions>
-      </.table_default>
-    </div>
+        <% end %>
+        <.table_default_row :for={d <- @defect_reasons}>
+          <.table_default_cell>
+            <.link navigate={Paths.defect_reason_edit(d.uuid)} class="link link-hover font-medium">
+              {d.name}
+            </.link>
+          </.table_default_cell>
+          <.table_default_cell class="text-sm text-base-content/60">
+            {d.description || "—"}
+          </.table_default_cell>
+          <.table_default_cell>
+            <span class={["badge badge-sm", status_badge_class(d.status)]}>
+              {status_label(d.status)}
+            </span>
+          </.table_default_cell>
+          <.table_default_cell class="text-right whitespace-nowrap">
+            <.table_row_menu mode="dropdown" id={"defect-reason-menu-#{d.uuid}"}>
+              <.table_row_menu_link
+                navigate={Paths.defect_reason_edit(d.uuid)}
+                icon="hero-pencil"
+                label={gettext("Edit")}
+              />
+              <.table_row_menu_divider />
+              <.table_row_menu_button
+                phx-click="show_delete_confirm"
+                phx-value-uuid={d.uuid}
+                phx-value-type="defect_reason"
+                icon="hero-trash"
+                label={gettext("Delete")}
+                variant="error"
+              />
+            </.table_row_menu>
+          </.table_default_cell>
+        </.table_default_row>
+      </.table_default_body>
+      <:card_header :let={d}>
+        <.link navigate={Paths.defect_reason_edit(d.uuid)} class="font-medium text-sm link link-hover">
+          {d.name}
+        </.link>
+      </:card_header>
+      <:card_actions :let={d}>
+        <.link navigate={Paths.defect_reason_edit(d.uuid)} class="btn btn-ghost btn-xs">
+          {gettext("Edit")}
+        </.link>
+        <button
+          phx-click="show_delete_confirm"
+          phx-value-uuid={d.uuid}
+          phx-value-type="defect_reason"
+          class="btn btn-ghost btn-xs text-error"
+        >
+          {gettext("Delete")}
+        </button>
+      </:card_actions>
+    </.table_default>
     """
   end
 
