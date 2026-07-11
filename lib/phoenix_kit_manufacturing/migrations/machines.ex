@@ -27,6 +27,9 @@ defmodule PhoenixKitManufacturing.Migrations.Machines do
       (`NULL` means "use the operation's `base_time_norm_seconds`"),
       unique on `(machine_uuid, operation_uuid)`, both FKs
       `ON DELETE CASCADE`.
+    * `phoenix_kit_defect_reasons` (V4) — global defect-reason directory:
+      `name`, `description`, `status`, `data`. A plain reference book, not
+      linked (M2M or otherwise) to machines/operations in this wave.
 
   All statements use `IF NOT EXISTS` guards — safe to run multiple times.
   `up/1` is cumulative: a single call (re-)applies every version's
@@ -69,7 +72,7 @@ defmodule PhoenixKitManufacturing.Migrations.Machines do
   ## Rollback
 
   `down/1` is a full, all-or-nothing rollback of everything this module has
-  ever created: it drops all five tables (`CASCADE`), which necessarily
+  ever created: it drops all six tables (`CASCADE`), which necessarily
   takes every version's columns down with them. It does **not** support
   incremental, per-version rollback — there is no "V2 -> V1, keeping V1
   data intact" path. Any `:version` key in `opts` is accepted for
@@ -80,7 +83,7 @@ defmodule PhoenixKitManufacturing.Migrations.Machines do
 
   @disable_ddl_transaction true
 
-  @current_version 3
+  @current_version 4
 
   @doc "Target schema version of the Manufacturing module."
   @spec current_version() :: pos_integer()
@@ -114,7 +117,8 @@ defmodule PhoenixKitManufacturing.Migrations.Machines do
     [
       {1, &probe_v1?/1},
       {2, &probe_v2?/1},
-      {3, &probe_v3?/1}
+      {3, &probe_v3?/1},
+      {4, &probe_v4?/1}
     ]
   end
 
@@ -157,6 +161,14 @@ defmodule PhoenixKitManufacturing.Migrations.Machines do
   defp probe_v3?(prefix) do
     table_exists?(prefix, "phoenix_kit_operations") and
       table_exists?(prefix, "phoenix_kit_machine_operations")
+  end
+
+  # V4 created a single new table (the defect-reasons directory) via one
+  # atomic CREATE TABLE statement — checking its presence covers every
+  # structural addition this version introduced, same as the V1/V3
+  # all-new-table probes above.
+  defp probe_v4?(prefix) do
+    table_exists?(prefix, "phoenix_kit_defect_reasons")
   end
 
   @doc "Applies the Manufacturing module migration. Accepts a keyword list or map."
@@ -330,6 +342,25 @@ defmodule PhoenixKitManufacturing.Migrations.Machines do
     ON #{p}phoenix_kit_machine_operations (operation_uuid)
     """)
 
+    # --- V4: defect reasons directory ---
+
+    execute("""
+    CREATE TABLE IF NOT EXISTS #{p}phoenix_kit_defect_reasons (
+      uuid UUID PRIMARY KEY DEFAULT uuid_generate_v7(),
+      name VARCHAR(255) NOT NULL,
+      description TEXT,
+      status VARCHAR(20) NOT NULL DEFAULT 'active',
+      data JSONB NOT NULL DEFAULT '{}',
+      inserted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+    """)
+
+    execute("""
+    CREATE INDEX IF NOT EXISTS idx_defect_reasons_status
+    ON #{p}phoenix_kit_defect_reasons (status)
+    """)
+
     :ok
   end
 
@@ -355,6 +386,7 @@ defmodule PhoenixKitManufacturing.Migrations.Machines do
     execute("DROP TABLE IF EXISTS #{p}phoenix_kit_machines CASCADE")
     execute("DROP TABLE IF EXISTS #{p}phoenix_kit_machine_types CASCADE")
     execute("DROP TABLE IF EXISTS #{p}phoenix_kit_operations CASCADE")
+    execute("DROP TABLE IF EXISTS #{p}phoenix_kit_defect_reasons CASCADE")
 
     :ok
   end

@@ -19,9 +19,9 @@ defmodule PhoenixKitManufacturing.Migrations.MachinesTest do
       # test_helper.exs runs `Machines.up(prefix: "public")` once for the
       # whole suite before any test starts. `up/1` is cumulative — one call
       # applies every version's statements — so `public` is always fully
-      # migrated (currently V1 + V2 + V3) by the time this runs.
+      # migrated (currently V1 + V2 + V3 + V4) by the time this runs.
       assert Machines.migrated_version_runtime(prefix: "public") == Machines.current_version()
-      assert Machines.migrated_version_runtime(prefix: "public") == 3
+      assert Machines.migrated_version_runtime(prefix: "public") == 4
     end
   end
 
@@ -86,6 +86,34 @@ defmodule PhoenixKitManufacturing.Migrations.MachinesTest do
       assert indexdef =~ "UNIQUE"
       assert indexdef =~ "machine_uuid"
       assert indexdef =~ "operation_uuid"
+    end
+  end
+
+  describe "up/1 (V4 additions)" do
+    test "phoenix_kit_defect_reasons exists" do
+      # `probe_v4?/1` checks this single new table — see moduledoc for why
+      # that's sufficient (one atomic CREATE TABLE statement, same as the
+      # V1/V3 all-new-table probes).
+      assert table_exists?("phoenix_kit_defect_reasons")
+    end
+
+    test "phoenix_kit_defect_reasons has the expected columns" do
+      for column <- ~w(uuid name description status data inserted_at updated_at) do
+        assert column_exists?("phoenix_kit_defect_reasons", column),
+               "expected phoenix_kit_defect_reasons.#{column} to exist after up/1"
+      end
+    end
+
+    test "idx_defect_reasons_status exists" do
+      query = """
+      SELECT indexdef FROM pg_indexes
+      WHERE schemaname = 'public' AND tablename = $1 AND indexname = $2
+      """
+
+      assert {:ok, %{rows: [[indexdef]]}} =
+               Repo.query(query, ["phoenix_kit_defect_reasons", "idx_defect_reasons_status"])
+
+      assert indexdef =~ "status"
     end
   end
 
