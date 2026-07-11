@@ -16,6 +16,11 @@ defmodule PhoenixKitManufacturing.Web.OperationFormLive do
   wrapper. All three are listed in `@preserve_fields` so their submitted
   value survives on secondary-language tabs — mirrors `MachineTypeFormLive`'s
   own `%{"status" => :status}`.
+
+  Self-wraps with `LayoutWrapper.app_layout` (`:self_wrapped_layout` on_mount
+  below) instead of relying on PhoenixKit's automatic admin layout, so
+  `page_title`/`page_subtitle` render in the global admin header rather than
+  an in-page one — same pattern as `PhoenixKitManufacturing.Web.MachinesLive`.
   """
 
   use Phoenix.LiveView
@@ -24,7 +29,6 @@ defmodule PhoenixKitManufacturing.Web.OperationFormLive do
   require Logger
 
   import PhoenixKitWeb.Components.MultilangForm
-  import PhoenixKitWeb.Components.Core.AdminPageHeader, only: [admin_page_header: 1]
   import PhoenixKitWeb.Components.Core.Input
   import PhoenixKitWeb.Components.Core.Select
 
@@ -37,6 +41,17 @@ defmodule PhoenixKitManufacturing.Web.OperationFormLive do
     "base_time_norm_seconds" => :base_time_norm_seconds,
     "status" => :status
   }
+
+  # PhoenixKit auto-applies its admin chrome layout to external module admin
+  # views via socket.private[:live_layout]. Opt out here so this view can
+  # self-wrap with LayoutWrapper.app_layout and push its title/subtitle into
+  # the global admin header instead of an in-page one — same pattern as
+  # `PhoenixKitManufacturing.Web.MachinesLive`.
+  on_mount({__MODULE__, :self_wrapped_layout})
+
+  def on_mount(:self_wrapped_layout, _params, _session, socket) do
+    {:cont, put_in(socket.private[:live_layout], {PhoenixKitWeb.Layouts, :app})}
+  end
 
   @impl true
   def mount(params, _session, socket) do
@@ -166,104 +181,109 @@ defmodule PhoenixKitManufacturing.Web.OperationFormLive do
       )
 
     ~H"""
-    <div class="flex flex-col w-full px-4 py-8 gap-6">
-      <.admin_page_header
-        title={@page_title}
-        subtitle={
-          if @action == :new,
-            do: gettext("Create a new operation for the operations directory."),
-            else: gettext("Update operation details.")
-        }
-      />
+    <PhoenixKitWeb.Components.LayoutWrapper.app_layout
+      socket={@socket}
+      flash={@flash}
+      phoenix_kit_current_scope={assigns[:phoenix_kit_current_scope]}
+      page_title={@page_title}
+      page_subtitle={
+        if @action == :new,
+          do: gettext("Create a new operation for the operations directory."),
+          else: gettext("Update operation details.")
+      }
+      current_path={assigns[:url_path] || assigns[:current_path] || Paths.operations()}
+      current_locale={assigns[:current_locale]}
+    >
+      <div class="flex flex-col w-full px-4 py-8 gap-6">
+        <div class="max-w-3xl mx-auto w-full">
+          <.form for={@form} action="#" phx-change="validate" phx-submit="save">
+            <div class="card bg-base-100 shadow-lg">
+              <.multilang_tabs
+                multilang_enabled={@multilang_enabled}
+                language_tabs={@language_tabs}
+                current_lang={@current_lang}
+                class="card-body pb-0 pt-4"
+              />
 
-      <div class="max-w-3xl mx-auto w-full">
-        <.form for={@form} action="#" phx-change="validate" phx-submit="save">
-          <div class="card bg-base-100 shadow-lg">
-            <.multilang_tabs
-              multilang_enabled={@multilang_enabled}
-              language_tabs={@language_tabs}
-              current_lang={@current_lang}
-              class="card-body pb-0 pt-4"
-            />
-
-            <.multilang_fields_wrapper
-              multilang_enabled={@multilang_enabled}
-              current_lang={@current_lang}
-              skeleton_class="card-body pt-0 flex flex-col gap-5"
-            >
-              <:skeleton>
-                <div class="form-control">
-                  <div class="label"><div class="skeleton h-4 w-14"></div></div>
-                  <div class="skeleton h-12 w-full rounded-lg"></div>
+              <.multilang_fields_wrapper
+                multilang_enabled={@multilang_enabled}
+                current_lang={@current_lang}
+                skeleton_class="card-body pt-0 flex flex-col gap-5"
+              >
+                <:skeleton>
+                  <div class="form-control">
+                    <div class="label"><div class="skeleton h-4 w-14"></div></div>
+                    <div class="skeleton h-12 w-full rounded-lg"></div>
+                  </div>
+                </:skeleton>
+                <div class="card-body pt-0 flex flex-col gap-5">
+                  <.translatable_field
+                    field_name="name"
+                    form_prefix="operation"
+                    changeset={@changeset}
+                    schema_field={:name}
+                    multilang_enabled={@multilang_enabled}
+                    current_lang={@current_lang}
+                    primary_language={@primary_language}
+                    lang_data={@lang_data}
+                    label={gettext("Name")}
+                    placeholder={gettext("e.g., Cutting, Welding, Assembly")}
+                    required
+                    class="w-full"
+                  />
                 </div>
-              </:skeleton>
-              <div class="card-body pt-0 flex flex-col gap-5">
-                <.translatable_field
-                  field_name="name"
-                  form_prefix="operation"
-                  changeset={@changeset}
-                  schema_field={:name}
-                  multilang_enabled={@multilang_enabled}
-                  current_lang={@current_lang}
-                  primary_language={@primary_language}
-                  lang_data={@lang_data}
-                  label={gettext("Name")}
-                  placeholder={gettext("e.g., Cutting, Welding, Assembly")}
-                  required
-                  class="w-full"
-                />
-              </div>
-            </.multilang_fields_wrapper>
+              </.multilang_fields_wrapper>
 
-            <div class="card-body flex flex-col gap-5 pt-0">
-              <div class="divider my-0"></div>
+              <div class="card-body flex flex-col gap-5 pt-0">
+                <div class="divider my-0"></div>
 
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <.input
-                  field={@form[:unit]}
-                  type="text"
-                  label={gettext("Unit")}
-                  placeholder={gettext("optional, e.g., pcs, m, kg")}
-                />
-                <.input
-                  field={@form[:base_time_norm_seconds]}
-                  type="number"
-                  label={gettext("Base time norm (seconds)")}
-                  placeholder={gettext("optional, e.g., 300")}
-                />
-              </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <.input
+                    field={@form[:unit]}
+                    type="text"
+                    label={gettext("Unit")}
+                    placeholder={gettext("optional, e.g., pcs, m, kg")}
+                  />
+                  <.input
+                    field={@form[:base_time_norm_seconds]}
+                    type="number"
+                    label={gettext("Base time norm (seconds)")}
+                    placeholder={gettext("optional, e.g., 300")}
+                  />
+                </div>
 
-              <div class="divider my-0"></div>
+                <div class="divider my-0"></div>
 
-              <div class="form-control">
-                <.select
-                  field={@form[:status]}
-                  label={gettext("Status")}
-                  options={[{gettext("Active"), "active"}, {gettext("Inactive"), "inactive"}]}
-                  class="transition-colors focus-within:select-primary"
-                />
-                <span class="label-text-alt text-base-content/50 mt-1">
-                  {gettext("Inactive operations won't appear in the machine operation selection.")}
-                </span>
-              </div>
+                <div class="form-control">
+                  <.select
+                    field={@form[:status]}
+                    label={gettext("Status")}
+                    options={[{gettext("Active"), "active"}, {gettext("Inactive"), "inactive"}]}
+                    class="transition-colors focus-within:select-primary"
+                  />
+                  <span class="label-text-alt text-base-content/50 mt-1">
+                    {gettext("Inactive operations won't appear in the machine operation selection.")}
+                  </span>
+                </div>
 
-              <div class="divider my-0"></div>
+                <div class="divider my-0"></div>
 
-              <div class="flex justify-end gap-3">
-                <.link navigate={Paths.operations()} class="btn btn-ghost">{gettext("Cancel")}</.link>
-                <button
-                  type="submit"
-                  class="btn btn-primary phx-submit-loading:opacity-75"
-                  phx-disable-with={if @action == :new, do: gettext("Creating..."), else: gettext("Saving...")}
-                >
-                  {if @action == :new, do: gettext("Create Operation"), else: gettext("Save Changes")}
-                </button>
+                <div class="flex justify-end gap-3">
+                  <.link navigate={Paths.operations()} class="btn btn-ghost">{gettext("Cancel")}</.link>
+                  <button
+                    type="submit"
+                    class="btn btn-primary phx-submit-loading:opacity-75"
+                    phx-disable-with={if @action == :new, do: gettext("Creating..."), else: gettext("Saving...")}
+                  >
+                    {if @action == :new, do: gettext("Create Operation"), else: gettext("Save Changes")}
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        </.form>
+          </.form>
+        </div>
       </div>
-    </div>
+    </PhoenixKitWeb.Components.LayoutWrapper.app_layout>
     """
   end
 end

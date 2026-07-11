@@ -7,6 +7,13 @@ defmodule PhoenixKitManufacturing.Web.MachineFormLive do
   for machine *types*. Type links are managed with a click-to-toggle picker
   held in a `MapSet` and synced to the join table after the machine saves.
 
+  ## Admin chrome
+
+  Self-wraps with `LayoutWrapper.app_layout` (`:self_wrapped_layout` on_mount
+  below) instead of relying on PhoenixKit's automatic admin layout, so
+  `page_title`/`page_subtitle` render in the global admin header rather than
+  an in-page one — same pattern as `PhoenixKitManufacturing.Web.MachinesLive`.
+
   ## Location (soft link, not a form field)
 
   `location_uuid`/`space_uuid` are picked via
@@ -77,7 +84,6 @@ defmodule PhoenixKitManufacturing.Web.MachineFormLive do
 
   require Logger
 
-  import PhoenixKitWeb.Components.Core.AdminPageHeader, only: [admin_page_header: 1]
   import PhoenixKitWeb.Components.Core.Icon, only: [icon: 1]
   import PhoenixKitWeb.Components.Core.Input
   import PhoenixKitWeb.Components.Core.Select
@@ -91,6 +97,17 @@ defmodule PhoenixKitManufacturing.Web.MachineFormLive do
   alias PhoenixKitManufacturing.Web.Components.CommentsPanel
 
   @statuses ~w(active maintenance repair mothballed decommissioned)
+
+  # PhoenixKit auto-applies its admin chrome layout to external module admin
+  # views via socket.private[:live_layout]. Opt out here so this view can
+  # self-wrap with LayoutWrapper.app_layout and push its title/subtitle into
+  # the global admin header instead of an in-page one — same pattern as
+  # `PhoenixKitManufacturing.Web.MachinesLive`.
+  on_mount({__MODULE__, :self_wrapped_layout})
+
+  def on_mount(:self_wrapped_layout, _params, _session, socket) do
+    {:cont, put_in(socket.private[:live_layout], {PhoenixKitWeb.Layouts, :app})}
+  end
 
   @impl true
   def mount(params, _session, socket) do
@@ -480,264 +497,269 @@ defmodule PhoenixKitManufacturing.Web.MachineFormLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="flex flex-col w-full px-4 py-8 gap-6">
-      <%!-- Folder-scoped media selector (featured-image picker). Modal
-           state lives in the shared Attachments assigns (see moduledoc);
-           `scope_folder_id` pulls the "machine" scope's folder — the
-           only scope this form ever opens the picker for. --%>
-      <.live_component
-        module={PhoenixKitWeb.Live.Components.MediaSelectorModal}
-        id="machine-form-media-selector"
-        show={@show_media_selector}
-        mode={@media_selection_mode}
-        file_type_filter={@media_filter}
-        selected_uuids={@media_selected_uuids}
-        scope_folder_id={Attachments.state(%{assigns: assigns}, "machine").folder_uuid}
-        phoenix_kit_current_user={assigns[:phoenix_kit_current_user]}
-      />
-
-      <.admin_page_header
-        title={@page_title}
-        subtitle={
-          if @action == :new,
-            do: gettext("Add a machine to the reference book."),
-            else: gettext("Update machine details.")
-        }
-      />
-
-      <div class="max-w-3xl mx-auto w-full flex flex-col gap-6">
-        <%!-- Location — deliberately OUTSIDE the <.form> below. PlacePicker
-             is a LiveComponent with its own search/tree inputs; nesting it
-             inside <.form phx-change="validate"> would risk its native
-             input/change events bubbling into the form's phx-change
-             binding. The picked uuids live in socket assigns (see
-             moduledoc) and never need to be real <form> fields. --%>
-        <.location_card
-          machine={@machine}
-          location_uuid={@location_uuid}
-          space_uuid={@space_uuid}
-          locale={@locale}
-          show_place_picker={@show_place_picker}
+    <PhoenixKitWeb.Components.LayoutWrapper.app_layout
+      socket={@socket}
+      flash={@flash}
+      phoenix_kit_current_scope={assigns[:phoenix_kit_current_scope]}
+      page_title={@page_title}
+      page_subtitle={
+        if @action == :new,
+          do: gettext("Add a machine to the reference book."),
+          else: gettext("Update machine details.")
+      }
+      current_path={assigns[:url_path] || assigns[:current_path] || Paths.machines()}
+      current_locale={assigns[:current_locale]}
+    >
+      <div class="flex flex-col w-full px-4 py-8 gap-6">
+        <%!-- Folder-scoped media selector (featured-image picker). Modal
+             state lives in the shared Attachments assigns (see moduledoc);
+             `scope_folder_id` pulls the "machine" scope's folder — the
+             only scope this form ever opens the picker for. --%>
+        <.live_component
+          module={PhoenixKitWeb.Live.Components.MediaSelectorModal}
+          id="machine-form-media-selector"
+          show={@show_media_selector}
+          mode={@media_selection_mode}
+          file_type_filter={@media_filter}
+          selected_uuids={@media_selected_uuids}
+          scope_folder_id={Attachments.state(%{assigns: assigns}, "machine").folder_uuid}
+          phoenix_kit_current_user={assigns[:phoenix_kit_current_user]}
         />
 
-        <.form for={@form} phx-change="validate" phx-submit="save">
-          <div class="card bg-base-100 shadow-lg">
-            <div class="card-body flex flex-col gap-5">
-              <.input
-                field={@form[:name]}
-                type="text"
-                label={gettext("Name")}
-                placeholder={gettext("e.g., CNC Mill #3")}
-                required
-              />
+        <div class="max-w-3xl mx-auto w-full flex flex-col gap-6">
+          <%!-- Location — deliberately OUTSIDE the <.form> below. PlacePicker
+               is a LiveComponent with its own search/tree inputs; nesting it
+               inside <.form phx-change="validate"> would risk its native
+               input/change events bubbling into the form's phx-change
+               binding. The picked uuids live in socket assigns (see
+               moduledoc) and never need to be real <form> fields. --%>
+          <.location_card
+            machine={@machine}
+            location_uuid={@location_uuid}
+            space_uuid={@space_uuid}
+            locale={@locale}
+            show_place_picker={@show_place_picker}
+          />
 
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <.form for={@form} phx-change="validate" phx-submit="save">
+            <div class="card bg-base-100 shadow-lg">
+              <div class="card-body flex flex-col gap-5">
                 <.input
-                  field={@form[:code]}
+                  field={@form[:name]}
                   type="text"
-                  label={gettext("Code")}
-                  placeholder={gettext("Inventory number, e.g. M-001")}
+                  label={gettext("Name")}
+                  placeholder={gettext("e.g., CNC Mill #3")}
+                  required
                 />
-                <.input
-                  field={@form[:manufacturer]}
-                  type="text"
-                  label={gettext("Manufacturer")}
-                />
-              </div>
-
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <.input field={@form[:model]} type="text" label={gettext("Model")} />
-                <.input
-                  field={@form[:manufacture_year]}
-                  type="number"
-                  label={gettext("Manufacture year")}
-                />
-              </div>
-
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <.input
-                  field={@form[:serial_number]}
-                  type="text"
-                  label={gettext("Serial number")}
-                />
-                <.input
-                  :if={@action == :edit and @machine.location_note not in [nil, ""]}
-                  field={@form[:location_note]}
-                  type="text"
-                  label={gettext("Location (legacy note)")}
-                  placeholder={gettext("Workshop / room / warehouse")}
-                />
-              </div>
-
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <.input
-                  field={@form[:commissioned_on]}
-                  type="date"
-                  label={gettext("Commissioned on")}
-                />
-                <.input
-                  field={@form[:warranty_until]}
-                  type="date"
-                  label={gettext("Warranty until")}
-                />
-              </div>
-
-              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <.input field={@form[:to_last_on]} type="date" label={gettext("Last maintenance")} />
-                <.input
-                  field={@form[:to_interval_days]}
-                  type="number"
-                  label={gettext("Maintenance interval (days)")}
-                />
-              </div>
-
-              <.input
-                field={@form[:to_next_on]}
-                type="date"
-                label={gettext("Next maintenance due")}
-              />
-
-              <.textarea
-                field={@form[:description]}
-                label={gettext("Description")}
-                rows="3"
-                placeholder={gettext("Notes about this machine...")}
-              />
-
-              <.textarea
-                field={@form[:notes]}
-                label={gettext("Internal notes")}
-                rows="3"
-                placeholder={gettext("Notes only visible to admins...")}
-              />
-
-              <.select
-                field={@form[:status]}
-                label={gettext("Status")}
-                options={status_options()}
-                class="transition-colors focus-within:select-primary"
-              />
-
-              <div :if={@all_types != []} class="flex flex-col gap-3">
-                <div class="divider my-0"></div>
-
-                <div class="flex items-center gap-2">
-                  <.icon name="hero-tag" class="w-5 h-5 text-base-content/70" />
-                  <span class="font-medium">{gettext("Machine Types")}</span>
-                </div>
-                <p class="text-sm text-base-content/50 -mt-2">
-                  {gettext("Click to toggle. A machine can have multiple types.")}
-                </p>
-
-                <div class="flex flex-wrap gap-2">
-                  <label
-                    :for={t <- @all_types}
-                    class={[
-                      "badge badge-lg cursor-pointer gap-1.5 select-none transition-colors",
-                      if(MapSet.member?(@linked_type_uuids, t.uuid),
-                        do: "badge-primary",
-                        else: "badge-ghost hover:badge-outline"
-                      )
-                    ]}
-                    phx-click="toggle_type"
-                    phx-value-uuid={t.uuid}
-                  >
-                    <.icon
-                      :if={MapSet.member?(@linked_type_uuids, t.uuid)}
-                      name="hero-check"
-                      class="h-3.5 w-3.5"
-                    />
-                    {t.name}
-                  </label>
-                </div>
-              </div>
-
-              <div :if={@merged_template != []} class="flex flex-col gap-3">
-                <div class="divider my-0"></div>
-
-                <div class="flex items-center gap-2">
-                  <.icon name="hero-clipboard-document-list" class="w-5 h-5 text-base-content/70" />
-                  <span class="font-medium">{gettext("Specifications")}</span>
-                </div>
-                <p class="text-sm text-base-content/50 -mt-2">
-                  {gettext("Fields defined by the selected machine types.")}
-                </p>
 
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <.dynamic_metadata_field :for={row <- @merged_template} row={row} machine={@machine} />
+                  <.input
+                    field={@form[:code]}
+                    type="text"
+                    label={gettext("Code")}
+                    placeholder={gettext("Inventory number, e.g. M-001")}
+                  />
+                  <.input
+                    field={@form[:manufacturer]}
+                    type="text"
+                    label={gettext("Manufacturer")}
+                  />
                 </div>
-              </div>
 
-              <div :if={@all_operations != []} class="flex flex-col gap-3">
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <.input field={@form[:model]} type="text" label={gettext("Model")} />
+                  <.input
+                    field={@form[:manufacture_year]}
+                    type="number"
+                    label={gettext("Manufacture year")}
+                  />
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <.input
+                    field={@form[:serial_number]}
+                    type="text"
+                    label={gettext("Serial number")}
+                  />
+                  <.input
+                    :if={@action == :edit and @machine.location_note not in [nil, ""]}
+                    field={@form[:location_note]}
+                    type="text"
+                    label={gettext("Location (legacy note)")}
+                    placeholder={gettext("Workshop / room / warehouse")}
+                  />
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <.input
+                    field={@form[:commissioned_on]}
+                    type="date"
+                    label={gettext("Commissioned on")}
+                  />
+                  <.input
+                    field={@form[:warranty_until]}
+                    type="date"
+                    label={gettext("Warranty until")}
+                  />
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <.input field={@form[:to_last_on]} type="date" label={gettext("Last maintenance")} />
+                  <.input
+                    field={@form[:to_interval_days]}
+                    type="number"
+                    label={gettext("Maintenance interval (days)")}
+                  />
+                </div>
+
+                <.input
+                  field={@form[:to_next_on]}
+                  type="date"
+                  label={gettext("Next maintenance due")}
+                />
+
+                <.textarea
+                  field={@form[:description]}
+                  label={gettext("Description")}
+                  rows="3"
+                  placeholder={gettext("Notes about this machine...")}
+                />
+
+                <.textarea
+                  field={@form[:notes]}
+                  label={gettext("Internal notes")}
+                  rows="3"
+                  placeholder={gettext("Notes only visible to admins...")}
+                />
+
+                <.select
+                  field={@form[:status]}
+                  label={gettext("Status")}
+                  options={status_options()}
+                  class="transition-colors focus-within:select-primary"
+                />
+
+                <div :if={@all_types != []} class="flex flex-col gap-3">
+                  <div class="divider my-0"></div>
+
+                  <div class="flex items-center gap-2">
+                    <.icon name="hero-tag" class="w-5 h-5 text-base-content/70" />
+                    <span class="font-medium">{gettext("Machine Types")}</span>
+                  </div>
+                  <p class="text-sm text-base-content/50 -mt-2">
+                    {gettext("Click to toggle. A machine can have multiple types.")}
+                  </p>
+
+                  <div class="flex flex-wrap gap-2">
+                    <label
+                      :for={t <- @all_types}
+                      class={[
+                        "badge badge-lg cursor-pointer gap-1.5 select-none transition-colors",
+                        if(MapSet.member?(@linked_type_uuids, t.uuid),
+                          do: "badge-primary",
+                          else: "badge-ghost hover:badge-outline"
+                        )
+                      ]}
+                      phx-click="toggle_type"
+                      phx-value-uuid={t.uuid}
+                    >
+                      <.icon
+                        :if={MapSet.member?(@linked_type_uuids, t.uuid)}
+                        name="hero-check"
+                        class="h-3.5 w-3.5"
+                      />
+                      {t.name}
+                    </label>
+                  </div>
+                </div>
+
+                <div :if={@merged_template != []} class="flex flex-col gap-3">
+                  <div class="divider my-0"></div>
+
+                  <div class="flex items-center gap-2">
+                    <.icon name="hero-clipboard-document-list" class="w-5 h-5 text-base-content/70" />
+                    <span class="font-medium">{gettext("Specifications")}</span>
+                  </div>
+                  <p class="text-sm text-base-content/50 -mt-2">
+                    {gettext("Fields defined by the selected machine types.")}
+                  </p>
+
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <.dynamic_metadata_field :for={row <- @merged_template} row={row} machine={@machine} />
+                  </div>
+                </div>
+
+                <div :if={@all_operations != []} class="flex flex-col gap-3">
+                  <div class="divider my-0"></div>
+
+                  <div class="flex items-center gap-2">
+                    <.icon name="hero-clock" class="w-5 h-5 text-base-content/70" />
+                    <span class="font-medium">{gettext("Operations")}</span>
+                  </div>
+                  <p class="text-sm text-base-content/50 -mt-2">
+                    {gettext(
+                      "Toggle the operations this machine performs. Override the time norm for this machine, or leave it blank to use the operation's base norm."
+                    )}
+                  </p>
+
+                  <.operation_row
+                    :for={operation <- @all_operations}
+                    operation={operation}
+                    enabled?={Map.has_key?(@operation_overrides, operation.uuid)}
+                    override={Map.get(@operation_overrides, operation.uuid)}
+                  />
+                </div>
+
+                <div class="flex flex-col gap-4">
+                  <div class="divider my-0"></div>
+
+                  <.files_card_body
+                    scope="machine"
+                    state={Attachments.state(%{assigns: assigns}, "machine")}
+                    uploads={@uploads}
+                  />
+                </div>
+
                 <div class="divider my-0"></div>
 
-                <div class="flex items-center gap-2">
-                  <.icon name="hero-clock" class="w-5 h-5 text-base-content/70" />
-                  <span class="font-medium">{gettext("Operations")}</span>
+                <div class="flex justify-end gap-3">
+                  <.link navigate={Paths.machines()} class="btn btn-ghost">{gettext("Cancel")}</.link>
+                  <button
+                    type="submit"
+                    class="btn btn-primary phx-submit-loading:opacity-75"
+                    disabled={@uploads.attachment_files.entries != []}
+                    phx-disable-with={if @action == :new, do: gettext("Creating..."), else: gettext("Saving...")}
+                  >
+                    {cond do
+                      @uploads.attachment_files.entries != [] -> gettext("Waiting for uploads...")
+                      @action == :new -> gettext("Create Machine")
+                      true -> gettext("Save Changes")
+                    end}
+                  </button>
                 </div>
-                <p class="text-sm text-base-content/50 -mt-2">
-                  {gettext(
-                    "Toggle the operations this machine performs. Override the time norm for this machine, or leave it blank to use the operation's base norm."
-                  )}
-                </p>
-
-                <.operation_row
-                  :for={operation <- @all_operations}
-                  operation={operation}
-                  enabled?={Map.has_key?(@operation_overrides, operation.uuid)}
-                  override={Map.get(@operation_overrides, operation.uuid)}
-                />
-              </div>
-
-              <div class="flex flex-col gap-4">
-                <div class="divider my-0"></div>
-
-                <.files_card_body
-                  scope="machine"
-                  state={Attachments.state(%{assigns: assigns}, "machine")}
-                  uploads={@uploads}
-                />
-              </div>
-
-              <div class="divider my-0"></div>
-
-              <div class="flex justify-end gap-3">
-                <.link navigate={Paths.machines()} class="btn btn-ghost">{gettext("Cancel")}</.link>
-                <button
-                  type="submit"
-                  class="btn btn-primary phx-submit-loading:opacity-75"
-                  disabled={@uploads.attachment_files.entries != []}
-                  phx-disable-with={if @action == :new, do: gettext("Creating..."), else: gettext("Saving...")}
-                >
-                  {cond do
-                    @uploads.attachment_files.entries != [] -> gettext("Waiting for uploads...")
-                    @action == :new -> gettext("Create Machine")
-                    true -> gettext("Save Changes")
-                  end}
-                </button>
               </div>
             </div>
-          </div>
-        </.form>
+          </.form>
 
-        <%!-- Comments — deliberately OUTSIDE the <.form> above, same reason
-             as the Location card: CommentsComponent renders its own
-             internal <.form phx-target={@myself}> for the composer, and
-             nesting a <form> inside a <form> is invalid HTML. Only shown
-             for :edit (a :new machine has no uuid yet) and only when the
-             comments module is installed and enabled. --%>
-        <div :if={Comments.available?() and @action == :edit} class="card bg-base-100 shadow-lg">
-          <div class="card-body">
-            <CommentsPanel.panel
-              kind={:machine}
-              resource_uuid={@machine.uuid}
-              current_user={assigns[:phoenix_kit_current_user]}
-              title={gettext("Comments")}
-            />
+          <%!-- Comments — deliberately OUTSIDE the <.form> above, same reason
+               as the Location card: CommentsComponent renders its own
+               internal <.form phx-target={@myself}> for the composer, and
+               nesting a <form> inside a <form> is invalid HTML. Only shown
+               for :edit (a :new machine has no uuid yet) and only when the
+               comments module is installed and enabled. --%>
+          <div :if={Comments.available?() and @action == :edit} class="card bg-base-100 shadow-lg">
+            <div class="card-body">
+              <CommentsPanel.panel
+                kind={:machine}
+                resource_uuid={@machine.uuid}
+                current_user={assigns[:phoenix_kit_current_user]}
+                title={gettext("Comments")}
+              />
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </PhoenixKitWeb.Components.LayoutWrapper.app_layout>
     """
   end
 
