@@ -202,15 +202,26 @@ defmodule PhoenixKitManufacturingTest do
       assert String.ends_with?(Paths.types(), "manufacturing/machines/types")
     end
 
+    test "operations/0 and operation_new/0 return the expected subpaths" do
+      assert String.ends_with?(Paths.operations(), "manufacturing/machines/operations")
+      assert String.ends_with?(Paths.operation_new(), "manufacturing/machines/operations/new")
+    end
+
     test "machine_edit/1 and type_edit/1 embed the uuid" do
       uuid = "018f0000-0000-7000-8000-000000000000"
       assert String.ends_with?(Paths.machine_edit(uuid), "machines/#{uuid}/edit")
       assert String.ends_with?(Paths.type_edit(uuid), "types/#{uuid}/edit")
     end
 
+    test "operation_edit/1 embeds the uuid" do
+      uuid = "018f0000-0000-7000-8000-000000000000"
+      assert String.ends_with?(Paths.operation_edit(uuid), "operations/#{uuid}/edit")
+    end
+
     test "sub-paths are prefixed by index/0" do
       assert String.starts_with?(Paths.machines(), Paths.index())
       assert String.starts_with?(Paths.types(), Paths.index())
+      assert String.starts_with?(Paths.operations(), Paths.index())
     end
   end
 end
