@@ -46,7 +46,7 @@ msgstr ""
 
 #: lib/phoenix_kit_manufacturing/column_config/machines.ex:168
 #: lib/phoenix_kit_manufacturing/web/defect_reason_form_live.ex:259
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:551
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:557
 #: lib/phoenix_kit_manufacturing/web/machine_type_form_live.ex:379
 #: lib/phoenix_kit_manufacturing/web/machines_live.ex:1433
 #: lib/phoenix_kit_manufacturing/web/operation_form_live.ex:261
@@ -54,7 +54,7 @@ msgstr ""
 msgid "Active"
 msgstr ""
 
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:605
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:611
 #, elixir-autogen, elixir-format
 msgid "Add a machine to the reference book."
 msgstr ""
@@ -71,7 +71,7 @@ msgstr ""
 
 #: lib/phoenix_kit_manufacturing/web/components/column_modal.ex:186
 #: lib/phoenix_kit_manufacturing/web/defect_reason_form_live.ex:270
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:857
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:875
 #: lib/phoenix_kit_manufacturing/web/machine_type_form_live.ex:421
 #: lib/phoenix_kit_manufacturing/web/operation_form_live.ex:272
 #, elixir-autogen, elixir-format
@@ -88,18 +88,18 @@ msgstr ""
 msgid "Categories used to tag machines."
 msgstr ""
 
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:782
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:800
 #, elixir-autogen, elixir-format
 msgid "Click to toggle. A machine can have multiple types."
 msgstr ""
 
 #: lib/phoenix_kit_manufacturing/column_config/machines.ex:40
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:704
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:722
 #, elixir-autogen, elixir-format
 msgid "Code"
 msgstr ""
 
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:866
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:884
 #, elixir-autogen, elixir-format
 msgid "Create Machine"
 msgstr ""
@@ -115,7 +115,7 @@ msgid "Create a new machine type for categorizing machines."
 msgstr ""
 
 #: lib/phoenix_kit_manufacturing/web/defect_reason_form_live.ex:274
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:862
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:880
 #: lib/phoenix_kit_manufacturing/web/machine_type_form_live.ex:425
 #: lib/phoenix_kit_manufacturing/web/operation_form_live.ex:276
 #, elixir-autogen, elixir-format
@@ -128,7 +128,7 @@ msgid "Dashboard"
 msgstr ""
 
 #: lib/phoenix_kit_manufacturing/column_config/machines.ex:172
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:555
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:561
 #: lib/phoenix_kit_manufacturing/web/machines_live.ex:1438
 #, elixir-autogen, elixir-format
 msgid "Decommissioned"
@@ -161,7 +161,7 @@ msgid "Delete Machine Type"
 msgstr ""
 
 #: lib/phoenix_kit_manufacturing/web/defect_reason_form_live.ex:244
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:755
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:773
 #: lib/phoenix_kit_manufacturing/web/machine_type_form_live.ex:364
 #: lib/phoenix_kit_manufacturing/web/machines_live.ex:1086
 #: lib/phoenix_kit_manufacturing/web/machines_live.ex:1101
@@ -184,7 +184,7 @@ msgid "Edit"
 msgstr ""
 
 #: lib/phoenix_kit_manufacturing/web/defect_reason_form_live.ex:88
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:306
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:312
 #: lib/phoenix_kit_manufacturing/web/machine_type_form_live.ex:100
 #: lib/phoenix_kit_manufacturing/web/operation_form_live.ex:95
 #, elixir-autogen, elixir-format
@@ -249,25 +249,25 @@ msgstr ""
 msgid "Inactive types won't appear in the machine type selection."
 msgstr ""
 
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:705
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:723
 #, elixir-autogen, elixir-format
 msgid "Inventory number, e.g. M-001"
 msgstr ""
 
 #: lib/phoenix_kit_manufacturing/column_config/machines.ex:65
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:911
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:929
 #, elixir-autogen, elixir-format
 msgid "Location"
 msgstr ""
 
 #: lib/phoenix_kit_manufacturing/web/dashboard_live.ex:91
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:779
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:797
 #: lib/phoenix_kit_manufacturing/web/machines_live.ex:145
 #, elixir-autogen, elixir-format
 msgid "Machine Types"
 msgstr ""
 
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:429
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:435
 #, elixir-autogen, elixir-format
 msgid "Machine created."
 msgstr ""
@@ -302,13 +302,13 @@ msgstr ""
 msgid "Machine type updated."
 msgstr ""
 
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:443
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:449
 #, elixir-autogen, elixir-format
 msgid "Machine updated."
 msgstr ""
 
 #: lib/phoenix_kit_manufacturing/column_config/machines.ex:169
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:552
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:558
 #: lib/phoenix_kit_manufacturing/web/machines_live.ex:1435
 #, elixir-autogen, elixir-format
 msgid "Maintenance"
@@ -320,14 +320,14 @@ msgid "Manage your machines reference book. Production orders and warehouse inte
 msgstr ""
 
 #: lib/phoenix_kit_manufacturing/column_config/machines.ex:88
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:710
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:728
 #, elixir-autogen, elixir-format
 msgid "Manufacturer"
 msgstr ""
 
 #: lib/phoenix_kit_manufacturing/column_config/machines.ex:28
 #: lib/phoenix_kit_manufacturing/web/defect_reason_form_live.ex:229
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:690
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:708
 #: lib/phoenix_kit_manufacturing/web/machine_type_form_live.ex:349
 #: lib/phoenix_kit_manufacturing/web/machines_live.ex:1100
 #: lib/phoenix_kit_manufacturing/web/machines_live.ex:1201
@@ -337,7 +337,7 @@ msgstr ""
 msgid "Name"
 msgstr ""
 
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:305
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:311
 #: lib/phoenix_kit_manufacturing/web/machines_live.ex:577
 #, elixir-autogen, elixir-format
 msgid "New Machine"
@@ -363,7 +363,7 @@ msgstr ""
 msgid "No machines yet."
 msgstr ""
 
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:757
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:775
 #, elixir-autogen, elixir-format
 msgid "Notes about this machine..."
 msgstr ""
@@ -374,7 +374,7 @@ msgid "Production equipment reference book."
 msgstr ""
 
 #: lib/phoenix_kit_manufacturing/web/defect_reason_form_live.ex:276
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:867
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:885
 #: lib/phoenix_kit_manufacturing/web/machine_type_form_live.ex:427
 #: lib/phoenix_kit_manufacturing/web/operation_form_live.ex:278
 #, elixir-autogen, elixir-format
@@ -387,21 +387,21 @@ msgid "Saved but failed to update type assignments."
 msgstr ""
 
 #: lib/phoenix_kit_manufacturing/web/defect_reason_form_live.ex:274
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:862
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:880
 #: lib/phoenix_kit_manufacturing/web/machine_type_form_live.ex:425
 #: lib/phoenix_kit_manufacturing/web/operation_form_live.ex:276
 #, elixir-autogen, elixir-format
 msgid "Saving..."
 msgstr ""
 
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:721
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:739
 #, elixir-autogen, elixir-format
 msgid "Serial number"
 msgstr ""
 
 #: lib/phoenix_kit_manufacturing/column_config/machines.ex:52
 #: lib/phoenix_kit_manufacturing/web/defect_reason_form_live.ex:258
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:769
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:787
 #: lib/phoenix_kit_manufacturing/web/machine_type_form_live.ex:378
 #: lib/phoenix_kit_manufacturing/web/machines_live.ex:1087
 #: lib/phoenix_kit_manufacturing/web/machines_live.ex:1102
@@ -436,7 +436,7 @@ msgstr ""
 msgid "Unexpected error: %{reason}"
 msgstr ""
 
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:606
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:612
 #, elixir-autogen, elixir-format
 msgid "Update machine details."
 msgstr ""
@@ -446,12 +446,12 @@ msgstr ""
 msgid "Update machine type details."
 msgstr ""
 
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:728
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:746
 #, elixir-autogen, elixir-format
 msgid "Workshop / room / warehouse"
 msgstr ""
 
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:691
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:709
 #, elixir-autogen, elixir-format
 msgid "e.g., CNC Mill #3"
 msgstr ""
@@ -496,7 +496,7 @@ msgstr ""
 msgid "Available"
 msgstr ""
 
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:1024
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:1042
 #, elixir-autogen, elixir-format
 msgid "Base"
 msgstr ""
@@ -512,7 +512,7 @@ msgstr ""
 msgid "Base time norm (seconds)"
 msgstr ""
 
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:1027
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:1045
 #, elixir-autogen, elixir-format
 msgid "Base: %{seconds}s"
 msgstr ""
@@ -527,7 +527,7 @@ msgstr ""
 msgid "Brief description of this defect reason..."
 msgstr ""
 
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:914
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:932
 #, elixir-autogen, elixir-format
 msgid "Change"
 msgstr ""
@@ -542,14 +542,14 @@ msgstr ""
 msgid "Columns"
 msgstr ""
 
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:659
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:888
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:677
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:906
 #, elixir-autogen, elixir-format
 msgid "Comments"
 msgstr ""
 
 #: lib/phoenix_kit_manufacturing/column_config/machines.ex:124
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:733
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:751
 #, elixir-autogen, elixir-format
 msgid "Commissioned on"
 msgstr ""
@@ -681,12 +681,12 @@ msgstr ""
 msgid "Failed to load operations."
 msgstr ""
 
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:816
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:834
 #, elixir-autogen, elixir-format
 msgid "Fields defined by the selected machine types."
 msgstr ""
 
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:914
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:932
 #, elixir-autogen, elixir-format
 msgid "Hide"
 msgstr ""
@@ -701,7 +701,7 @@ msgstr ""
 msgid "Inactive operations won't appear in the machine operation selection."
 msgstr ""
 
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:762
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:780
 #, elixir-autogen, elixir-format
 msgid "Internal notes"
 msgstr ""
@@ -716,23 +716,23 @@ msgstr ""
 msgid "Label"
 msgstr ""
 
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:740
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:758
 #, elixir-autogen, elixir-format
 msgid "Last maintenance"
 msgstr ""
 
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:727
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:745
 #, elixir-autogen, elixir-format
 msgid "Location (legacy note)"
 msgstr ""
 
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:744
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:762
 #, elixir-autogen, elixir-format
 msgid "Maintenance interval (days)"
 msgstr ""
 
 #: lib/phoenix_kit_manufacturing/column_config/machines.ex:112
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:716
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:734
 #, elixir-autogen, elixir-format
 msgid "Manufacture year"
 msgstr ""
@@ -748,13 +748,13 @@ msgid "Min"
 msgstr ""
 
 #: lib/phoenix_kit_manufacturing/column_config/machines.ex:100
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:712
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:730
 #, elixir-autogen, elixir-format
 msgid "Model"
 msgstr ""
 
 #: lib/phoenix_kit_manufacturing/column_config/machines.ex:171
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:554
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:560
 #: lib/phoenix_kit_manufacturing/web/machines_live.ex:1437
 #, elixir-autogen, elixir-format
 msgid "Mothballed"
@@ -773,7 +773,7 @@ msgid "New Operation"
 msgstr ""
 
 #: lib/phoenix_kit_manufacturing/column_config/machines.ex:148
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:749
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:767
 #, elixir-autogen, elixir-format
 msgid "Next maintenance due"
 msgstr ""
@@ -798,12 +798,12 @@ msgstr ""
 msgid "No operations yet."
 msgstr ""
 
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:565
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:571
 #, elixir-autogen, elixir-format
 msgid "Not set"
 msgstr ""
 
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:764
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:782
 #, elixir-autogen, elixir-format
 msgid "Notes only visible to admins..."
 msgstr ""
@@ -833,8 +833,8 @@ msgstr ""
 msgid "Operation updated."
 msgstr ""
 
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:646
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:829
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:664
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:847
 #: lib/phoenix_kit_manufacturing/web/machines_live.ex:146
 #: lib/phoenix_kit_manufacturing/web/machines_live.ex:806
 #, elixir-autogen, elixir-format
@@ -863,7 +863,7 @@ msgid "Remove"
 msgstr ""
 
 #: lib/phoenix_kit_manufacturing/column_config/machines.ex:170
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:553
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:559
 #: lib/phoenix_kit_manufacturing/web/machines_live.ex:1436
 #, elixir-autogen, elixir-format
 msgid "Repair"
@@ -909,7 +909,7 @@ msgstr ""
 msgid "Specification Fields"
 msgstr ""
 
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:813
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:831
 #, elixir-autogen, elixir-format
 msgid "Specifications"
 msgstr ""
@@ -929,7 +929,7 @@ msgstr ""
 msgid "This will permanently delete this operation. Machines using it will lose the link."
 msgstr ""
 
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:832
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:850
 #, elixir-autogen, elixir-format
 msgid "Toggle the operations this machine performs. Override the time norm for this machine, or leave it blank to use the operation's base norm."
 msgstr ""
@@ -957,18 +957,18 @@ msgstr ""
 msgid "Update operation details."
 msgstr ""
 
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:865
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:883
 #, elixir-autogen, elixir-format
 msgid "Waiting for uploads..."
 msgstr ""
 
 #: lib/phoenix_kit_manufacturing/column_config/machines.ex:136
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:738
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:756
 #, elixir-autogen, elixir-format
 msgid "Warranty until"
 msgstr ""
 
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:1021
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:1039
 #, elixir-autogen, elixir-format
 msgid "base %{seconds}s"
 msgstr ""
@@ -1013,12 +1013,12 @@ msgstr ""
 msgid "optional, e.g., pcs, m, kg"
 msgstr ""
 
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:652
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:670
 #, elixir-autogen, elixir-format
 msgid "Files"
 msgstr ""
 
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:639
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:657
 #, elixir-autogen, elixir-format
 msgid "General"
 msgstr ""
