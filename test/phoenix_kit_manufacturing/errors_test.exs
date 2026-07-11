@@ -11,6 +11,7 @@ defmodule PhoenixKitManufacturing.ErrorsTest do
       assert Errors.message(:defect_reason_not_found) == "Defect reason not found."
       assert Errors.message(:machine_delete_failed) == "Failed to delete machine."
       assert Errors.message(:operation_delete_failed) == "Failed to delete operation."
+      assert Errors.message(:defect_reason_delete_failed) == "Failed to delete defect reason."
       assert Errors.message(:type_assignment_failed) =~ "type assignments"
       assert Errors.message(:operation_assignment_failed) =~ "operation assignments"
       assert Errors.message(:unexpected) == "An unexpected error occurred."

@@ -2,7 +2,7 @@ defmodule PhoenixKitManufacturing.Web.MachinesLive do
   @moduledoc """
   Landing page for the Machines reference book.
 
-  Handles three actions, dispatched by `live_action`:
+  Handles four actions, dispatched by `live_action`:
 
     * `:index` — list of machines, backed by
       `PhoenixKitManufacturing.ColumnConfig.Machines` for configurable
@@ -13,10 +13,14 @@ defmodule PhoenixKitManufacturing.Web.MachinesLive do
     * `:operations` — list of the operations directory (same plain
       `table_default` treatment as `:types`; see
       `dev_docs/IMPLEMENTATION_PLAN.md` M24/finding #9).
+    * `:defect_reasons` — list of the defect-reasons directory (same plain
+      `table_default` treatment, symmetric to `:operations`; see
+      `dev_docs/IMPLEMENTATION_PLAN.md` M32).
 
-  The Machines / Types / Operations switcher lives in the PhoenixKit admin
-  dashboard's subtab nav (`:manufacturing_machines` / `:manufacturing_types`
-  / `:manufacturing_operations`), so it is not duplicated in the page body.
+  The Machines / Types / Operations / Defect Reasons switcher lives in the
+  PhoenixKit admin dashboard's subtab nav (`:manufacturing_machines` /
+  `:manufacturing_types` / `:manufacturing_operations` /
+  `:manufacturing_defect_reasons`), so it is not duplicated in the page body.
 
   ## Filtering UI
 
@@ -49,7 +53,7 @@ defmodule PhoenixKitManufacturing.Web.MachinesLive do
   alias PhoenixKit.Modules.Storage
   alias PhoenixKit.Modules.Storage.URLSigner
   alias PhoenixKitManufacturing.ColumnConfig.Machines, as: MachineColumnConfig
-  alias PhoenixKitManufacturing.{Errors, Machines, Operations, Paths}
+  alias PhoenixKitManufacturing.{DefectReasons, Errors, Machines, Operations, Paths}
   alias PhoenixKitManufacturing.Web.Components.ColumnModal
 
   @impl true
@@ -67,6 +71,7 @@ defmodule PhoenixKitManufacturing.Web.MachinesLive do
        machines: [],
        machine_types: [],
        operations: [],
+       defect_reasons: [],
        confirm_delete: nil,
        locale: socket.assigns[:current_locale] || Gettext.get_locale(),
        current_user_uuid: user_uuid,
@@ -121,9 +126,11 @@ defmodule PhoenixKitManufacturing.Web.MachinesLive do
   defp tab_title(:index), do: gettext("Machines")
   defp tab_title(:types), do: gettext("Machine Types")
   defp tab_title(:operations), do: gettext("Operations")
+  defp tab_title(:defect_reasons), do: gettext("Defect Reasons")
 
   defp tab_subtitle(:types), do: gettext("Categories used to tag machines.")
   defp tab_subtitle(:operations), do: gettext("Operations used in production routing.")
+  defp tab_subtitle(:defect_reasons), do: gettext("Reasons used to classify production defects.")
   defp tab_subtitle(_action), do: gettext("Production equipment reference book.")
 
   defp load_data(socket, :index) do
@@ -150,6 +157,14 @@ defmodule PhoenixKitManufacturing.Web.MachinesLive do
     error ->
       Logger.error("Failed to load operations: #{inspect(error)}")
       put_flash(socket, :error, gettext("Failed to load operations."))
+  end
+
+  defp load_data(socket, :defect_reasons) do
+    assign(socket, :defect_reasons, DefectReasons.list_defect_reasons())
+  rescue
+    error ->
+      Logger.error("Failed to load defect reasons: #{inspect(error)}")
+      put_flash(socket, :error, gettext("Failed to load defect reasons."))
   end
 
   # ── Machines pipeline (search + column filters + sort) ───────────
@@ -360,6 +375,13 @@ defmodule PhoenixKitManufacturing.Web.MachinesLive do
     end
   end
 
+  def handle_event("delete_defect_reason", _params, socket) do
+    case socket.assigns.confirm_delete do
+      {"defect_reason", uuid} -> do_delete_item(socket, :defect_reason, uuid)
+      _ -> {:noreply, assign(socket, :confirm_delete, nil)}
+    end
+  end
+
   def handle_event("cancel_delete", _params, socket) do
     {:noreply, assign(socket, :confirm_delete, nil)}
   end
@@ -410,6 +432,7 @@ defmodule PhoenixKitManufacturing.Web.MachinesLive do
   defp fetch_for_delete(:machine, uuid), do: Machines.get_machine(uuid)
   defp fetch_for_delete(:machine_type, uuid), do: Machines.get_machine_type(uuid)
   defp fetch_for_delete(:operation, uuid), do: Operations.get_operation(uuid)
+  defp fetch_for_delete(:defect_reason, uuid), do: DefectReasons.get_defect_reason(uuid)
 
   defp delete_for_kind(:machine, record, socket),
     do: Machines.delete_machine(record, actor_opts(socket))
@@ -420,21 +443,28 @@ defmodule PhoenixKitManufacturing.Web.MachinesLive do
   defp delete_for_kind(:operation, record, socket),
     do: Operations.delete_operation(record, actor_opts(socket))
 
+  defp delete_for_kind(:defect_reason, record, socket),
+    do: DefectReasons.delete_defect_reason(record, actor_opts(socket))
+
   defp deleted_message(:machine), do: gettext("Machine deleted.")
   defp deleted_message(:machine_type), do: gettext("Machine type deleted.")
   defp deleted_message(:operation), do: gettext("Operation deleted.")
+  defp deleted_message(:defect_reason), do: gettext("Defect reason deleted.")
 
   defp not_found_atom(:machine), do: :machine_not_found
   defp not_found_atom(:machine_type), do: :machine_type_not_found
   defp not_found_atom(:operation), do: :operation_not_found
+  defp not_found_atom(:defect_reason), do: :defect_reason_not_found
 
   defp delete_failed_atom(:machine), do: :machine_delete_failed
   defp delete_failed_atom(:machine_type), do: :machine_type_delete_failed
   defp delete_failed_atom(:operation), do: :operation_delete_failed
+  defp delete_failed_atom(:defect_reason), do: :defect_reason_delete_failed
 
   defp reload_action(:machine), do: :index
   defp reload_action(:machine_type), do: :types
   defp reload_action(:operation), do: :operations
+  defp reload_action(:defect_reason), do: :defect_reasons
 
   defp actor_opts(socket) do
     case socket.assigns[:phoenix_kit_current_scope] do
@@ -471,6 +501,13 @@ defmodule PhoenixKitManufacturing.Web.MachinesLive do
             class="btn btn-primary btn-sm"
           >
             <.icon name="hero-plus" class="w-4 h-4" /> {gettext("New Operation")}
+          </.link>
+          <.link
+            :if={@active_tab == :defect_reasons}
+            navigate={Paths.defect_reason_new()}
+            class="btn btn-primary btn-sm"
+          >
+            <.icon name="hero-plus" class="w-4 h-4" /> {gettext("New Defect Reason")}
           </.link>
         </:actions>
       </.admin_page_header>
@@ -689,6 +726,10 @@ defmodule PhoenixKitManufacturing.Web.MachinesLive do
         <.operations_table operations={@operations} />
       </div>
 
+      <div :if={@active_tab == :defect_reasons}>
+        <.defect_reasons_table defect_reasons={@defect_reasons} />
+      </div>
+
       <.confirm_modal
         show={match?({"machine", _}, @confirm_delete)}
         on_confirm="delete_machine"
@@ -718,6 +759,17 @@ defmodule PhoenixKitManufacturing.Web.MachinesLive do
         title={gettext("Delete Operation")}
         title_icon="hero-trash"
         messages={[{:warning, gettext("This will permanently delete this operation. Machines using it will lose the link.")}]}
+        confirm_text={gettext("Delete")}
+        danger={true}
+      />
+
+      <.confirm_modal
+        show={match?({"defect_reason", _}, @confirm_delete)}
+        on_confirm="delete_defect_reason"
+        on_cancel="cancel_delete"
+        title={gettext("Delete Defect Reason")}
+        title_icon="hero-trash"
+        messages={[{:warning, gettext("This will permanently delete this defect reason. This cannot be undone.")}]}
         confirm_text={gettext("Delete")}
         danger={true}
       />
@@ -1155,6 +1207,103 @@ defmodule PhoenixKitManufacturing.Web.MachinesLive do
             phx-click="show_delete_confirm"
             phx-value-uuid={o.uuid}
             phx-value-type="operation"
+            class="btn btn-ghost btn-xs text-error"
+          >
+            {gettext("Delete")}
+          </button>
+        </:card_actions>
+      </.table_default>
+    </div>
+    """
+  end
+
+  # Column shape mirrors `types_table/1` (Name / Description / Status),
+  # not `operations_table/1` — `DefectReason` has the same
+  # name/description/status shape as `MachineType` (see
+  # `Schemas.DefectReason`'s moduledoc), no `Operation`-style unit/norm
+  # fields.
+  defp defect_reasons_table(assigns) do
+    ~H"""
+    <div :if={@defect_reasons == []} class="card bg-base-100 shadow">
+      <div class="card-body items-center text-center py-12">
+        <p class="text-base-content/60">{gettext("No defect reasons yet.")}</p>
+      </div>
+    </div>
+
+    <div :if={@defect_reasons != []}>
+      <.table_default
+        variant="zebra"
+        size="sm"
+        toggleable={true}
+        id="defect-reasons-list"
+        items={@defect_reasons}
+        card_fields={
+          fn d ->
+            [
+              %{label: gettext("Description"), value: d.description || "—"},
+              %{label: gettext("Status"), value: status_label(d.status)}
+            ]
+          end
+        }
+      >
+        <.table_default_header>
+          <.table_default_row>
+            <.table_default_header_cell>{gettext("Name")}</.table_default_header_cell>
+            <.table_default_header_cell>{gettext("Description")}</.table_default_header_cell>
+            <.table_default_header_cell>{gettext("Status")}</.table_default_header_cell>
+            <.table_default_header_cell class="text-right whitespace-nowrap">
+              {gettext("Actions")}
+            </.table_default_header_cell>
+          </.table_default_row>
+        </.table_default_header>
+        <.table_default_body>
+          <.table_default_row :for={d <- @defect_reasons}>
+            <.table_default_cell>
+              <.link navigate={Paths.defect_reason_edit(d.uuid)} class="link link-hover font-medium">
+                {d.name}
+              </.link>
+            </.table_default_cell>
+            <.table_default_cell class="text-sm text-base-content/60">
+              {d.description || "—"}
+            </.table_default_cell>
+            <.table_default_cell>
+              <span class={["badge badge-sm", status_badge_class(d.status)]}>
+                {status_label(d.status)}
+              </span>
+            </.table_default_cell>
+            <.table_default_cell class="text-right whitespace-nowrap">
+              <.table_row_menu mode="dropdown" id={"defect-reason-menu-#{d.uuid}"}>
+                <.table_row_menu_link
+                  navigate={Paths.defect_reason_edit(d.uuid)}
+                  icon="hero-pencil"
+                  label={gettext("Edit")}
+                />
+                <.table_row_menu_divider />
+                <.table_row_menu_button
+                  phx-click="show_delete_confirm"
+                  phx-value-uuid={d.uuid}
+                  phx-value-type="defect_reason"
+                  icon="hero-trash"
+                  label={gettext("Delete")}
+                  variant="error"
+                />
+              </.table_row_menu>
+            </.table_default_cell>
+          </.table_default_row>
+        </.table_default_body>
+        <:card_header :let={d}>
+          <.link navigate={Paths.defect_reason_edit(d.uuid)} class="font-medium text-sm link link-hover">
+            {d.name}
+          </.link>
+        </:card_header>
+        <:card_actions :let={d}>
+          <.link navigate={Paths.defect_reason_edit(d.uuid)} class="btn btn-ghost btn-xs">
+            {gettext("Edit")}
+          </.link>
+          <button
+            phx-click="show_delete_confirm"
+            phx-value-uuid={d.uuid}
+            phx-value-type="defect_reason"
             class="btn btn-ghost btn-xs text-error"
           >
             {gettext("Delete")}

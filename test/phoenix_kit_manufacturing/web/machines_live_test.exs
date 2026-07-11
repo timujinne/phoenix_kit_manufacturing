@@ -3,7 +3,7 @@ defmodule PhoenixKitManufacturing.Web.MachinesLiveTest do
   # unavailable (see test_helper.exs).
   use PhoenixKitManufacturing.LiveCase
 
-  alias PhoenixKitManufacturing.{Machines, Operations}
+  alias PhoenixKitManufacturing.{DefectReasons, Machines, Operations}
 
   describe "list pages" do
     test "machines list renders the empty state", %{conn: conn} do
@@ -45,6 +45,36 @@ defmodule PhoenixKitManufacturing.Web.MachinesLiveTest do
       {:ok, _view, html} = live(conn, "/en/admin/manufacturing/machines/operations")
 
       assert html =~ "Inspection"
+      assert html =~ "—"
+    end
+
+    test "defect reasons list renders the empty state", %{conn: conn} do
+      conn = put_test_scope(conn, fake_scope())
+      {:ok, _view, html} = live(conn, "/en/admin/manufacturing/machines/defect-reasons")
+      assert html =~ "No defect reasons yet."
+    end
+
+    test "an existing defect reason appears in the list with its description", %{conn: conn} do
+      {:ok, _reason} =
+        DefectReasons.create_defect_reason(%{
+          name: "Scratched surface",
+          description: "Visible scratch on the finished part"
+        })
+
+      conn = put_test_scope(conn, fake_scope())
+      {:ok, _view, html} = live(conn, "/en/admin/manufacturing/machines/defect-reasons")
+
+      assert html =~ "Scratched surface"
+      assert html =~ "Visible scratch on the finished part"
+    end
+
+    test "a defect reason without a description renders an em dash", %{conn: conn} do
+      {:ok, _reason} = DefectReasons.create_defect_reason(%{name: "Missing part"})
+
+      conn = put_test_scope(conn, fake_scope())
+      {:ok, _view, html} = live(conn, "/en/admin/manufacturing/machines/defect-reasons")
+
+      assert html =~ "Missing part"
       assert html =~ "—"
     end
 
@@ -206,6 +236,34 @@ defmodule PhoenixKitManufacturing.Web.MachinesLiveTest do
       html = render_click(view, "cancel_delete", %{})
       assert html =~ "Keep Me"
       assert Operations.count_operations() == 1
+    end
+
+    test "deleting a defect reason removes it from the list", %{conn: conn} do
+      {:ok, reason} = DefectReasons.create_defect_reason(%{name: "To Delete"})
+      conn = put_test_scope(conn, fake_scope())
+      {:ok, view, _html} = live(conn, "/en/admin/manufacturing/machines/defect-reasons")
+
+      view
+      |> element(~s{button[phx-value-uuid="#{reason.uuid}"][phx-value-type="defect_reason"]})
+      |> render_click()
+
+      html = render_click(view, "delete_defect_reason", %{})
+      assert html =~ "No defect reasons yet."
+      assert DefectReasons.count_defect_reasons() == 0
+    end
+
+    test "cancelling a defect reason delete leaves it in the list", %{conn: conn} do
+      {:ok, reason} = DefectReasons.create_defect_reason(%{name: "Keep Me"})
+      conn = put_test_scope(conn, fake_scope())
+      {:ok, view, _html} = live(conn, "/en/admin/manufacturing/machines/defect-reasons")
+
+      view
+      |> element(~s{button[phx-value-uuid="#{reason.uuid}"][phx-value-type="defect_reason"]})
+      |> render_click()
+
+      html = render_click(view, "cancel_delete", %{})
+      assert html =~ "Keep Me"
+      assert DefectReasons.count_defect_reasons() == 1
     end
   end
 
