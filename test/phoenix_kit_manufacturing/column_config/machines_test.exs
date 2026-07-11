@@ -108,15 +108,17 @@ defmodule PhoenixKitManufacturing.ColumnConfig.MachinesTest do
     assert [%{commissioned_on: ~D[2019-06-01]}] = kept
   end
 
-  test "sort_key for name orders ascending case-sensitively as a plain string" do
+  test "sort_key for name orders ascending case-insensitively" do
     meta = C.column_metadata_map()["name"]
 
-    assert Enum.sort_by(
-             [entry(%{name: "Press"}), entry(%{name: "CNC Mill"})],
-             meta.sort_key,
-             :asc
-           ) ==
-             [entry(%{name: "CNC Mill"}), entry(%{name: "Press"})]
+    rows = [entry(%{name: "Zebra Cutter"}), entry(%{name: "apple Press"})]
+
+    # A raw (non-downcased) string sort_key would put "Zebra Cutter" first —
+    # in ASCII, every uppercase letter sorts below every lowercase one, so
+    # "Z" (90) < "a" (97) even though "zebra" alphabetically comes after
+    # "apple". The case-insensitive sort_key must correct for that.
+    assert Enum.sort_by(rows, meta.sort_key, :asc) ==
+             [entry(%{name: "apple Press"}), entry(%{name: "Zebra Cutter"})]
   end
 
   test "sort_key for to_next_on orders chronologically and puts nil first ascending" do
