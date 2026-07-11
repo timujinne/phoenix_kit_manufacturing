@@ -104,6 +104,12 @@ defmodule PhoenixKitManufacturing.Web.MachineFormLive do
   torn out, since it's harmless and the fallback stays correct if that
   ever changes.
 
+  One deliberate exception to "folder-scoped": the featured-image picker
+  itself (the `MediaSelectorModal` in `render/1`) browses the *full*
+  media library, not just this machine's folder — see the comment there
+  for why. Everything else (attached-files upload, storage, detach) stays
+  folder-scoped exactly as described above.
+
   ## Comments
 
   Only rendered on the Comments tab (`@active_tab == :comments`, which —
@@ -609,10 +615,22 @@ defmodule PhoenixKitManufacturing.Web.MachineFormLive do
       current_locale={assigns[:current_locale]}
     >
       <div class="flex flex-col w-full px-4 py-8 gap-6">
-        <%!-- Folder-scoped media selector (featured-image picker). Modal
-             state lives in the shared Attachments assigns (see moduledoc);
-             `scope_folder_id` pulls the "machine" scope's folder — the
-             only scope this form ever opens the picker for. --%>
+        <%!-- Featured-image picker — intentionally FULL-LIBRARY, not
+             folder-scoped (`scope_folder_id: nil`; see
+             `MediaSelectorModal`'s moduledoc for what that attr does).
+             This is a deliberate deviation from the folder-scoped norm
+             every sibling picker on this module and its warehouse/
+             locations/catalogue counterparts uses: a machine's cover
+             photo is very often already sitting in the library — a
+             manufacturer stock shot of the same model, or a photo
+             already picked for another machine — so restricting the
+             browse to this one machine's own (usually near-empty)
+             folder would hide exactly the images an admin wants and
+             push them toward needless re-uploads/duplicates. The
+             attached-files dropzone below (rendered via FilesCard,
+             wired through `Attachments.handle_progress/3`) never goes
+             through this modal at all, so it keeps uploading straight
+             into the "machine" scope's own folder, unaffected. --%>
         <.live_component
           module={PhoenixKitWeb.Live.Components.MediaSelectorModal}
           id="machine-form-media-selector"
@@ -620,7 +638,7 @@ defmodule PhoenixKitManufacturing.Web.MachineFormLive do
           mode={@media_selection_mode}
           file_type_filter={@media_filter}
           selected_uuids={@media_selected_uuids}
-          scope_folder_id={Attachments.state(%{assigns: assigns}, "machine").folder_uuid}
+          scope_folder_id={nil}
           phoenix_kit_current_user={assigns[:phoenix_kit_current_user]}
         />
 
