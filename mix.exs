@@ -14,7 +14,7 @@ defmodule PhoenixKitManufacturing.MixProject do
       deps: deps(),
       description: "Manufacturing module for PhoenixKit — machines, production orders.",
       package: package(),
-      dialyzer: [plt_add_apps: [:phoenix_kit, :phoenix_kit_locations]],
+      dialyzer: [plt_add_apps: [:phoenix_kit, :phoenix_kit_comments, :phoenix_kit_locations]],
       name: "PhoenixKitManufacturing",
       source_url: @source_url,
       docs: docs(),
@@ -24,7 +24,7 @@ defmodule PhoenixKitManufacturing.MixProject do
 
   def application do
     [
-      extra_applications: [:logger, :phoenix_kit, :phoenix_kit_locations]
+      extra_applications: [:logger, :phoenix_kit, :phoenix_kit_comments, :phoenix_kit_locations]
     ]
   end
 
@@ -70,6 +70,7 @@ defmodule PhoenixKitManufacturing.MixProject do
   defp deps do
     [
       pk_dep(:phoenix_kit, "~> 1.7.133"),
+      pk_dep(:phoenix_kit_comments, "~> 0.2"),
       # PlacePicker / Spaces.full_path are only on the local locations fork
       # right now (0.2.1) — this pin is a placeholder until that wave is
       # published to Hex. Local dev/tests: PHOENIX_KIT_LOCATIONS_PATH=../phoenix_kit_locations.

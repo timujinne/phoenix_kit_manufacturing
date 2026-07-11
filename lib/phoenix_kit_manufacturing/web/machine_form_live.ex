@@ -37,10 +37,24 @@ defmodule PhoenixKitManufacturing.Web.MachineFormLive do
   reading `phx-value-scope` off the event params. A `:new` machine gets
   a "pending" folder (no uuid yet); `save_machine/3` renames it to its
   deterministic `machine-<uuid>` name right after the first save.
+
+  ## Comments
+
+  Only rendered for `:edit` (a `:new` machine has no `uuid` to attach
+  comments to yet) and only when `PhoenixKitManufacturing.Comments.available?/0`
+  is true. Like the Location card, this is rendered in its own card
+  **outside** the main `<.form>` — `CommentsComponent` renders its own
+  internal `<.form phx-target={@myself}>` for the composer, and nesting
+  that inside this form's `<.form>` would produce invalid nested `<form>`
+  elements. `use PhoenixKitComments.Embed` (below) forwards the rich-text
+  composer's `{:leaf_changed, ...}` messages to the component — without
+  it, posting a comment silently no-ops (see `PhoenixKitComments.Embed`
+  moduledoc).
   """
 
   use Phoenix.LiveView
   use Gettext, backend: PhoenixKitManufacturing.Gettext
+  use PhoenixKitComments.Embed
 
   require Logger
 
@@ -53,8 +67,9 @@ defmodule PhoenixKitManufacturing.Web.MachineFormLive do
   import PhoenixKitManufacturing.Web.Components.FilesCard, only: [files_card_body: 1]
 
   alias PhoenixKitLocations.Web.Components.PlacePicker
-  alias PhoenixKitManufacturing.{Attachments, Errors, Machines, Paths}
+  alias PhoenixKitManufacturing.{Attachments, Comments, Errors, Machines, Paths}
   alias PhoenixKitManufacturing.Schemas.Machine
+  alias PhoenixKitManufacturing.Web.Components.CommentsPanel
 
   @statuses ~w(active maintenance repair mothballed decommissioned)
 
@@ -576,6 +591,23 @@ defmodule PhoenixKitManufacturing.Web.MachineFormLive do
             </div>
           </div>
         </.form>
+
+        <%!-- Comments — deliberately OUTSIDE the <.form> above, same reason
+             as the Location card: CommentsComponent renders its own
+             internal <.form phx-target={@myself}> for the composer, and
+             nesting a <form> inside a <form> is invalid HTML. Only shown
+             for :edit (a :new machine has no uuid yet) and only when the
+             comments module is installed and enabled. --%>
+        <div :if={Comments.available?() and @action == :edit} class="card bg-base-100 shadow-lg">
+          <div class="card-body">
+            <CommentsPanel.panel
+              kind={:machine}
+              resource_uuid={@machine.uuid}
+              current_user={assigns[:phoenix_kit_current_user]}
+              title={gettext("Comments")}
+            />
+          </div>
+        </div>
       </div>
     </div>
     """
