@@ -2,13 +2,29 @@ defmodule PhoenixKitManufacturing.Migrations.Machines do
   @moduledoc """
   Versioned migration for the Manufacturing module.
 
-  Creates the machines reference-book tables:
+  Creates and extends the machines reference-book tables:
 
-    * `phoenix_kit_machines`
-    * `phoenix_kit_machine_types`
-    * `phoenix_kit_machine_type_assignments` (join)
+    * `phoenix_kit_machines` — machine records.
+      * V1: identity + status core columns (`name`, `code`, `manufacturer`,
+        `serial_number`, `description`, `location_note`, `status`, `data`,
+        `metadata`).
+      * V2: extended passport (`model`, `manufacture_year`,
+        `commissioned_on`, `warranty_until`, `to_last_on`,
+        `to_interval_days`, `to_next_on`, `notes`) and a soft link to
+        `phoenix_kit_locations` (`location_uuid`, `space_uuid`, indexed via
+        `idx_machines_location`). These are intentionally *not* real
+        foreign keys — `phoenix_kit_locations` is a soft, optional
+        cross-module reference (see `PhoenixKitManufacturing.Machines.location_label/2`).
+    * `phoenix_kit_machine_types` — machine type records.
+      * V1: `name`, `description`, `status`, `data`.
+      * V2: `field_template` (JSONB array, default `[]`) — the per-type
+        dynamic metadata field definitions rendered on the machine form.
+    * `phoenix_kit_machine_type_assignments` (join, V1 only).
 
   All statements use `IF NOT EXISTS` guards — safe to run multiple times.
+  `up/1` is cumulative: a single call (re-)applies every version's
+  statements in one pass, not just the delta since the last-applied
+  version.
 
   Implements the versioned-migration protocol expected by PhoenixKit Core
   (`mix phoenix_kit.update`): `current_version/0` and
@@ -19,6 +35,16 @@ defmodule PhoenixKitManufacturing.Migrations.Machines do
   Reference implementation — `PhoenixKit.Migrations.Postgres` in Core.
 
   Depends on `uuid_generate_v7()`, provided by core's early migrations.
+
+  `@disable_ddl_transaction true` is declared below for forward-compatibility
+  and to document intent, but is currently inert in practice: the host
+  wrapper `mix phoenix_kit.update` generates
+  (`generate_module_migration/5`) does not read this attribute off an
+  external `migration_module` — only core's own migrations get that
+  treatment. A `mix phoenix_kit.update` run against a PgBouncer-fronted
+  database is therefore *not* actually protected from a mid-batch
+  transaction drop by this flag; verify column/table presence afterwards
+  regardless (see `version_probes/0` below).
 
   ## Version detection
 
@@ -32,11 +58,22 @@ defmodule PhoenixKitManufacturing.Migrations.Machines do
   records success) would otherwise be reported as fully migrated forever.
   Add a `{version, probe}` pair to `version_probes/0` every time
   `@current_version` is bumped.
+
+  ## Rollback
+
+  `down/1` is a full, all-or-nothing rollback of everything this module has
+  ever created: it drops all three tables (`CASCADE`), which necessarily
+  takes every version's columns down with them. It does **not** support
+  incremental, per-version rollback — there is no "V2 -> V1, keeping V1
+  data intact" path. Any `:version` key in `opts` is accepted for
+  call-signature symmetry with `up/1` but is not consulted.
   """
 
   use Ecto.Migration
 
-  @current_version 1
+  @disable_ddl_transaction true
+
+  @current_version 2
 
   @doc "Target schema version of the Manufacturing module."
   @spec current_version() :: pos_integer()
@@ -68,7 +105,8 @@ defmodule PhoenixKitManufacturing.Migrations.Machines do
   @spec version_probes() :: [{pos_integer(), (String.t() -> boolean())}]
   defp version_probes do
     [
-      {1, &probe_v1?/1}
+      {1, &probe_v1?/1},
+      {2, &probe_v2?/1}
     ]
   end
 
@@ -79,6 +117,29 @@ defmodule PhoenixKitManufacturing.Migrations.Machines do
     table_exists?(prefix, "phoenix_kit_machines") and
       table_exists?(prefix, "phoenix_kit_machine_types") and
       table_exists?(prefix, "phoenix_kit_machine_type_assignments")
+  end
+
+  # V2 added 10 columns to phoenix_kit_machines (passport fields + the soft
+  # location link) and 1 column to phoenix_kit_machine_types
+  # (field_template). Check every one of them — not just a representative
+  # column — so a partial apply (e.g. PgBouncer dropping some but not all
+  # `ALTER TABLE` statements) can never read back as "fully migrated to V2".
+  @v2_columns [
+    {"phoenix_kit_machines", "model"},
+    {"phoenix_kit_machines", "manufacture_year"},
+    {"phoenix_kit_machines", "commissioned_on"},
+    {"phoenix_kit_machines", "warranty_until"},
+    {"phoenix_kit_machines", "to_last_on"},
+    {"phoenix_kit_machines", "to_interval_days"},
+    {"phoenix_kit_machines", "to_next_on"},
+    {"phoenix_kit_machines", "notes"},
+    {"phoenix_kit_machines", "location_uuid"},
+    {"phoenix_kit_machines", "space_uuid"},
+    {"phoenix_kit_machine_types", "field_template"}
+  ]
+
+  defp probe_v2?(prefix) do
+    Enum.all?(@v2_columns, fn {table, column} -> column_exists?(prefix, table, column) end)
   end
 
   @doc "Applies the Manufacturing module migration. Accepts a keyword list or map."
@@ -147,10 +208,84 @@ defmodule PhoenixKitManufacturing.Migrations.Machines do
     ON #{p}phoenix_kit_machine_type_assignments (machine_type_uuid)
     """)
 
+    # --- V2: machine passport + soft location link + type field_template ---
+
+    execute("""
+    ALTER TABLE #{p}phoenix_kit_machines
+    ADD COLUMN IF NOT EXISTS model VARCHAR(255)
+    """)
+
+    execute("""
+    ALTER TABLE #{p}phoenix_kit_machines
+    ADD COLUMN IF NOT EXISTS manufacture_year INTEGER
+    """)
+
+    execute("""
+    ALTER TABLE #{p}phoenix_kit_machines
+    ADD COLUMN IF NOT EXISTS commissioned_on DATE
+    """)
+
+    execute("""
+    ALTER TABLE #{p}phoenix_kit_machines
+    ADD COLUMN IF NOT EXISTS warranty_until DATE
+    """)
+
+    execute("""
+    ALTER TABLE #{p}phoenix_kit_machines
+    ADD COLUMN IF NOT EXISTS to_last_on DATE
+    """)
+
+    execute("""
+    ALTER TABLE #{p}phoenix_kit_machines
+    ADD COLUMN IF NOT EXISTS to_interval_days INTEGER
+    """)
+
+    execute("""
+    ALTER TABLE #{p}phoenix_kit_machines
+    ADD COLUMN IF NOT EXISTS to_next_on DATE
+    """)
+
+    execute("""
+    ALTER TABLE #{p}phoenix_kit_machines
+    ADD COLUMN IF NOT EXISTS notes TEXT
+    """)
+
+    execute("""
+    ALTER TABLE #{p}phoenix_kit_machines
+    ADD COLUMN IF NOT EXISTS location_uuid UUID
+    """)
+
+    execute("""
+    ALTER TABLE #{p}phoenix_kit_machines
+    ADD COLUMN IF NOT EXISTS space_uuid UUID
+    """)
+
+    execute("""
+    CREATE INDEX IF NOT EXISTS idx_machines_location
+    ON #{p}phoenix_kit_machines (location_uuid)
+    """)
+
+    execute("""
+    ALTER TABLE #{p}phoenix_kit_machine_types
+    ADD COLUMN IF NOT EXISTS field_template JSONB NOT NULL DEFAULT '[]'
+    """)
+
     :ok
   end
 
-  @doc "Rolls back the Manufacturing module migration. Accepts a keyword list or map."
+  @doc """
+  Rolls back the Manufacturing module migration. Accepts a keyword list or
+  map.
+
+  This is a full, all-or-nothing rollback: it drops every table this
+  module has ever created (`CASCADE`), across every version — which
+  necessarily takes every version's columns down with them (dropping
+  `phoenix_kit_machines` removes its V2 passport columns; there is no
+  standalone `DROP COLUMN` step). It does **not** support incremental,
+  per-version rollback — there is no "V2 -> V1, keeping V1 data intact"
+  path. Any `:version` key in `opts` is accepted for call-signature
+  symmetry with `up/1` but is not read.
+  """
   @spec down(keyword() | map()) :: :ok
   def down(opts \\ []) do
     p = prefix_str(normalize_prefix(opts))
@@ -181,6 +316,23 @@ defmodule PhoenixKitManufacturing.Migrations.Machines do
     case PhoenixKit.RepoHelper.repo().query("SELECT to_regclass($1)", [qualified]) do
       {:ok, %{rows: [[nil]]}} -> false
       {:ok, %{rows: [[_oid]]}} -> true
+      _ -> false
+    end
+  end
+
+  # Whether `column` exists on `table` under `prefix`. Backs every
+  # structural-addition probe from V2 onward (`table_exists?/2` alone can't
+  # distinguish "table exists at an older version" from "table has this
+  # version's new column").
+  @spec column_exists?(String.t(), String.t(), String.t()) :: boolean()
+  defp column_exists?(prefix, table, column) do
+    query = """
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = $1 AND table_name = $2 AND column_name = $3
+    """
+
+    case PhoenixKit.RepoHelper.repo().query(query, [prefix, table, column]) do
+      {:ok, %{rows: [_ | _]}} -> true
       _ -> false
     end
   end
