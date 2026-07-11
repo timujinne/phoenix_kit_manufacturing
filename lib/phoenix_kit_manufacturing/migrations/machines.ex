@@ -19,6 +19,19 @@ defmodule PhoenixKitManufacturing.Migrations.Machines do
   Reference implementation — `PhoenixKit.Migrations.Postgres` in Core.
 
   Depends on `uuid_generate_v7()`, provided by core's early migrations.
+
+  ## Version detection
+
+  `migrated_version_runtime/1` walks `version_probes/0` — a
+  `[{version, probe_fun}]` list, highest version first — and returns the
+  version of the first probe that passes (`0` if none do). Each probe must
+  check *every* structural addition its version introduced (every new
+  column on every table it touched, every new table) rather than a single
+  representative — a partially-applied migration (e.g. PgBouncer silently
+  dropping some `ALTER TABLE` statements while `schema_migrations` still
+  records success) would otherwise be reported as fully migrated forever.
+  Add a `{version, probe}` pair to `version_probes/0` every time
+  `@current_version` is bumped.
   """
 
   use Ecto.Migration
@@ -32,26 +45,40 @@ defmodule PhoenixKitManufacturing.Migrations.Machines do
   @doc """
   Currently applied schema version, read from the database.
 
-  Returns `0` when the `phoenix_kit_machines` table does not yet exist, and
-  `#{@current_version}` once it has been created. `opts` is a keyword list
-  with an optional `:prefix`.
+  Runs `version_probes/0` from highest to lowest version and returns the
+  version of the first probe that passes. Returns `0` when no probe passes
+  (nothing migrated yet) or the probe query itself failed. `opts` is a
+  keyword list or map with an optional `:prefix`.
   """
   @spec migrated_version_runtime(keyword() | map()) :: non_neg_integer()
   def migrated_version_runtime(opts \\ []) do
     prefix = normalize_prefix(opts)
 
-    table =
-      if prefix == "public",
-        do: "public.phoenix_kit_machines",
-        else: "#{prefix}.phoenix_kit_machines"
-
-    case PhoenixKit.RepoHelper.repo().query("SELECT to_regclass($1)", [table]) do
-      {:ok, %{rows: [[nil]]}} -> 0
-      {:ok, %{rows: [[_oid]]}} -> @current_version
-      _ -> 0
-    end
+    version_probes()
+    |> Enum.sort_by(fn {version, _probe} -> version end, :desc)
+    |> Enum.find_value(0, fn {version, probe} -> if probe.(prefix) == true, do: version end)
   rescue
     _ -> 0
+  end
+
+  # Highest-version-first probe list, walked by `migrated_version_runtime/1`.
+  # Each probe is a `(prefix -> boolean)` closure checking every structural
+  # addition that version introduced. Extend this list (never rewrite past
+  # entries) whenever `@current_version` is bumped.
+  @spec version_probes() :: [{pos_integer(), (String.t() -> boolean())}]
+  defp version_probes do
+    [
+      {1, &probe_v1?/1}
+    ]
+  end
+
+  # V1 created three tables — check all of them, not just one representative,
+  # so a partially-applied `up/1` (e.g. cut short mid-batch) reads back as
+  # "not migrated" rather than silently passing for V2+.
+  defp probe_v1?(prefix) do
+    table_exists?(prefix, "phoenix_kit_machines") and
+      table_exists?(prefix, "phoenix_kit_machine_types") and
+      table_exists?(prefix, "phoenix_kit_machine_type_assignments")
   end
 
   @doc "Applies the Manufacturing module migration. Accepts a keyword list or map."
@@ -143,4 +170,18 @@ defmodule PhoenixKitManufacturing.Migrations.Machines do
 
   defp prefix_str(prefix) when prefix in [nil, "public"], do: ""
   defp prefix_str(prefix), do: "#{prefix}."
+
+  # Whether `table` exists under `prefix`. Generalizes the `to_regclass`
+  # presence check every version probe is built from. Never raises on a
+  # missing schema/table — `to_regclass` returns NULL, not an error.
+  @spec table_exists?(String.t(), String.t()) :: boolean()
+  defp table_exists?(prefix, table) do
+    qualified = if prefix == "public", do: "public.#{table}", else: "#{prefix}.#{table}"
+
+    case PhoenixKit.RepoHelper.repo().query("SELECT to_regclass($1)", [qualified]) do
+      {:ok, %{rows: [[nil]]}} -> false
+      {:ok, %{rows: [[_oid]]}} -> true
+      _ -> false
+    end
+  end
 end
