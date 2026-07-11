@@ -8,6 +8,7 @@ defmodule PhoenixKitManufacturing.ErrorsTest do
       assert Errors.message(:machine_not_found) == "Machine not found."
       assert Errors.message(:machine_type_not_found) == "Machine type not found."
       assert Errors.message(:operation_not_found) == "Operation not found."
+      assert Errors.message(:defect_reason_not_found) == "Defect reason not found."
       assert Errors.message(:machine_delete_failed) == "Failed to delete machine."
       assert Errors.message(:operation_delete_failed) == "Failed to delete operation."
       assert Errors.message(:type_assignment_failed) =~ "type assignments"

@@ -56,4 +56,18 @@ defmodule PhoenixKitManufacturing.Paths do
   @doc "Edit operation form."
   @spec operation_edit(String.t()) :: String.t()
   def operation_edit(uuid), do: Routes.path("#{@base}/machines/operations/#{uuid}/edit")
+
+  # ── Defect reasons ──────────────────────────────────────────────────
+
+  @doc "Defect reasons list."
+  @spec defect_reasons() :: String.t()
+  def defect_reasons, do: Routes.path("#{@base}/machines/defect-reasons")
+
+  @doc "New defect reason form."
+  @spec defect_reason_new() :: String.t()
+  def defect_reason_new, do: Routes.path("#{@base}/machines/defect-reasons/new")
+
+  @doc "Edit defect reason form."
+  @spec defect_reason_edit(String.t()) :: String.t()
+  def defect_reason_edit(uuid), do: Routes.path("#{@base}/machines/defect-reasons/#{uuid}/edit")
 end
