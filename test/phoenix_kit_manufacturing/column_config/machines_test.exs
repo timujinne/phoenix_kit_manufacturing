@@ -13,6 +13,8 @@ defmodule PhoenixKitManufacturing.ColumnConfig.MachinesTest do
         status: "active",
         status_label: "Active",
         location: "Building A / Room 3",
+        types_csv: "",
+        type_names: [],
         manufacturer: "Haas",
         model: "VF-2",
         manufacture_year: 2018,
@@ -28,16 +30,17 @@ defmodule PhoenixKitManufacturing.ColumnConfig.MachinesTest do
     assert C.scope() == "manufacturing_machines"
   end
 
-  test "default_columns/0 are the starred set in order" do
-    assert C.default_columns() == ["name", "code", "status", "location"]
+  test "default_columns/0 are the starred set in order (includes types added in M17)" do
+    assert C.default_columns() == ["name", "code", "status", "location", "types"]
   end
 
-  test "all_column_ids/0 covers every column (types deferred to M17)" do
+  test "all_column_ids/0 covers every column including types added in M17" do
     assert C.all_column_ids() == [
              "name",
              "code",
              "status",
              "location",
+             "types",
              "manufacturer",
              "model",
              "manufacture_year",
@@ -46,7 +49,7 @@ defmodule PhoenixKitManufacturing.ColumnConfig.MachinesTest do
              "to_next_on"
            ]
 
-    refute "types" in C.all_column_ids()
+    assert "types" in C.all_column_ids()
   end
 
   test "validate_columns/1 drops unknown ids, keeps order" do
@@ -78,6 +81,40 @@ defmodule PhoenixKitManufacturing.ColumnConfig.MachinesTest do
            ]
 
     assert Enum.map(meta.filter_options.(rows), &elem(&1, 0)) == Machine.statuses()
+  end
+
+  test "enum filter on types_csv matches exact CSV strings; options derive from entries" do
+    meta = C.column_metadata_map()["types"]
+
+    rows = [
+      entry(%{types_csv: "CNC", type_names: ["CNC"]}),
+      entry(%{types_csv: "CNC, Milling", type_names: ["CNC", "Milling"]}),
+      entry(%{types_csv: "", type_names: []})
+    ]
+
+    assert [%{types_csv: "CNC"}] = meta.filter_apply.(rows, "CNC")
+    assert [%{types_csv: "CNC, Milling"}] = meta.filter_apply.(rows, "CNC, Milling")
+    # Empty value passes all entries through
+    assert rows == meta.filter_apply.(rows, "")
+
+    options = meta.filter_options.(rows)
+    assert {"CNC", "CNC"} in options
+    assert {"CNC, Milling", "CNC, Milling"} in options
+    # Empty types_csv (no types) does not appear as a filter option
+    refute {"", ""} in options
+  end
+
+  test "types column is non-sortable" do
+    meta = C.column_metadata_map()["types"]
+    refute meta.sortable?
+  end
+
+  test "types column is filterable with :enum filter type" do
+    meta = C.column_metadata_map()["types"]
+    assert meta.filterable?
+    assert meta.filter_type == :enum
+    assert is_function(meta.filter_options, 1)
+    assert is_function(meta.filter_apply, 2)
   end
 
   test "numeric_range filter on manufacture_year keeps rows within [min, max]" do

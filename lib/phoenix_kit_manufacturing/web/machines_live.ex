@@ -4,16 +4,36 @@ defmodule PhoenixKitManufacturing.Web.MachinesLive do
 
   Handles two actions, dispatched by `live_action`:
 
-    * `:index` — list of machines
-    * `:types` — list of machine types
+    * `:index` — list of machines, backed by
+      `PhoenixKitManufacturing.ColumnConfig.Machines` for configurable
+      columns, per-column filters, sorting, and a saved view (persisted via
+      `PhoenixKitManufacturing.ViewConfigs`). See `Web.ColumnManagement`.
+    * `:types` — list of machine types (plain `table_default`, no
+      ColumnConfig — reference-data cardinality doesn't need it).
 
   The Machines / Types switcher lives in the PhoenixKit admin dashboard's
   subtab nav (`:manufacturing_machines` / `:manufacturing_types`), so it is
   not duplicated in the page body.
+
+  ## Filtering UI
+
+  Unlike `PhoenixKitWarehouse`'s list pages, `:index` does not render a
+  `FilterChips`-style pill widget per active filter — deliberately, to keep
+  this wave's footprint small (`dev_docs/IMPLEMENTATION_PLAN.md` M17).
+  Toggling a column's funnel icon in the Columns modal still reveals a
+  plain labeled input for that column (driven by the very same
+  `set_filter_value`/`clear_filter` events `Web.ColumnManagement` injects),
+  but instead of per-chip pill styling with an individual ✕ button, a
+  single "N filters active" indicator plus one "Reset" button clears every
+  filter value at once.
   """
 
   use Phoenix.LiveView
   use Gettext, backend: PhoenixKitManufacturing.Gettext
+
+  use PhoenixKitManufacturing.Web.ColumnManagement,
+    column_config: PhoenixKitManufacturing.ColumnConfig.Machines,
+    scope: "manufacturing_machines"
 
   require Logger
 
@@ -25,17 +45,41 @@ defmodule PhoenixKitManufacturing.Web.MachinesLive do
 
   alias PhoenixKit.Modules.Storage
   alias PhoenixKit.Modules.Storage.URLSigner
+  alias PhoenixKitManufacturing.ColumnConfig.Machines, as: MachineColumnConfig
   alias PhoenixKitManufacturing.{Errors, Machines, Paths}
+  alias PhoenixKitManufacturing.Web.Components.ColumnModal
 
   @impl true
   def mount(_params, _session, socket) do
+    # Same extraction as PhoenixKitWarehouse.Web.InventoriesLive's mount/3 —
+    # used for :current_user_uuid (view-config persistence keying), not for
+    # activity-log attribution (that's `actor_opts/1`, unrelated).
+    scope = socket.assigns[:phoenix_kit_current_scope]
+    current_user = scope && PhoenixKit.Users.Auth.Scope.user(scope)
+    user_uuid = current_user && current_user.uuid
+
     {:ok,
      assign(socket,
        page_title: gettext("Machines"),
        machines: [],
        machine_types: [],
        confirm_delete: nil,
-       locale: socket.assigns[:current_locale] || Gettext.get_locale()
+       locale: socket.assigns[:current_locale] || Gettext.get_locale(),
+       current_user_uuid: user_uuid,
+       search: "",
+       sort_by: "name",
+       sort_dir: :asc,
+       # Safe defaults for column-management assigns — overwritten by
+       # assign_column_state/2 in load_data/2 when live_action is :index.
+       # Present in mount so `:if`-guarded template sections that reference
+       # these never encounter a missing-assign error even if :types tab is
+       # loaded first or a connection is re-established mid-session.
+       selected_columns: [],
+       active_filters: [],
+       filter_values: %{},
+       show_column_modal: false,
+       temp_selected_columns: nil,
+       temp_active_filters: nil
      )}
   end
 
@@ -53,11 +97,30 @@ defmodule PhoenixKitManufacturing.Web.MachinesLive do
     {:noreply, socket}
   end
 
+  # Re-runs the machines pipeline after a filter value change or a column
+  # save (called by the `Web.ColumnManagement` macro); resets sort to the
+  # fallback column if its own column was hidden. Mirrors
+  # `PhoenixKitWarehouse.Web.InventoriesLive.__view_config_changed__/1` —
+  # the fallback here is "name" (Machines' primary sortable identifier),
+  # not inventories' "number".
+  def __view_config_changed__(socket) do
+    socket =
+      if socket.assigns.sort_by in socket.assigns.selected_columns do
+        socket
+      else
+        assign(socket, :sort_by, List.first(socket.assigns.selected_columns) || "name")
+      end
+
+    assign_machines(socket)
+  end
+
   defp tab_title(:index), do: gettext("Machines")
   defp tab_title(:types), do: gettext("Machine Types")
 
   defp load_data(socket, :index) do
-    assign(socket, :machines, Machines.list_machines())
+    socket
+    |> PhoenixKitManufacturing.Web.ColumnManagement.assign_column_state(MachineColumnConfig)
+    |> assign_machines()
   rescue
     error ->
       Logger.error("Failed to load machines: #{inspect(error)}")
@@ -72,9 +135,189 @@ defmodule PhoenixKitManufacturing.Web.MachinesLive do
       put_flash(socket, :error, gettext("Failed to load machine types."))
   end
 
+  # ── Machines pipeline (search + column filters + sort) ───────────
+
+  defp assign_machines(socket) do
+    machines =
+      Machines.list_machines()
+      |> enrich_machines(socket.assigns.locale)
+      |> apply_global_search(socket.assigns.search)
+      |> apply_column_filters(socket.assigns.active_filters, socket.assigns.filter_values)
+      |> apply_sort(socket.assigns.sort_by, socket.assigns.sort_dir)
+
+    assign(socket, :machines, machines)
+  end
+
+  # Flattens `Machine` structs into the enriched map shape
+  # `ColumnConfig.Machines` operates on (see its moduledoc). Keeps `:data`
+  # so `machine_thumbnail/1` (which reads `data["featured_image_uuid"]`,
+  # see `PhoenixKitManufacturing.Attachments`) works unchanged against
+  # either a raw `%Machine{}` or this flat map.
+  defp enrich_machines(machines, locale) do
+    location_by_uuid = location_labels(machines, locale)
+
+    Enum.map(machines, fn m ->
+      type_names = m.machine_types |> Enum.map(& &1.name) |> Enum.sort()
+
+      %{
+        uuid: m.uuid,
+        name: m.name,
+        code: m.code,
+        status: m.status,
+        status_label: status_label(m.status),
+        location: Map.get(location_by_uuid, m.uuid),
+        types_csv: Enum.join(type_names, ", "),
+        type_names: type_names,
+        manufacturer: m.manufacturer,
+        model: m.model,
+        manufacture_year: m.manufacture_year,
+        commissioned_on: m.commissioned_on,
+        warranty_until: m.warranty_until,
+        to_next_on: m.to_next_on,
+        data: m.data
+      }
+    end)
+  end
+
+  # Batch-resolves location labels, deduping identical location_uuid/
+  # space_uuid/location_note combinations across the list before calling
+  # into phoenix_kit_locations. `Machines.location_label/2` makes 1-2 soft
+  # cross-module DB round trips per call, and a shop floor commonly parks
+  # many machines in the same room/rack, so resolving each distinct
+  # combination once — not once per row — avoids redundant queries. See
+  # dev_docs/IMPLEMENTATION_PLAN.md's M15/M17 review note on batching
+  # `location_label`.
+  defp location_labels(machines, locale) do
+    cache =
+      Enum.reduce(machines, %{}, fn machine, acc ->
+        key = location_key(machine)
+
+        if Map.has_key?(acc, key) do
+          acc
+        else
+          Map.put(acc, key, Machines.location_label(machine, locale: locale))
+        end
+      end)
+
+    Map.new(machines, &{&1.uuid, Map.get(cache, location_key(&1))})
+  end
+
+  defp location_key(machine),
+    do: {machine.location_uuid, machine.space_uuid, machine.location_note}
+
+  defp apply_global_search(entries, ""), do: entries
+
+  defp apply_global_search(entries, query) do
+    q = String.downcase(query)
+
+    Enum.filter(entries, fn e ->
+      Enum.any?([e.name, e.code, e.manufacturer, e.model], fn field ->
+        field && String.contains?(String.downcase(field), q)
+      end)
+    end)
+  end
+
+  defp apply_column_filters(entries, active_filters, filter_values) do
+    meta_map = MachineColumnConfig.column_metadata_map()
+
+    Enum.reduce(active_filters, entries, fn id, acc ->
+      meta = Map.get(meta_map, id)
+      value = Map.get(filter_values, id)
+
+      cond do
+        is_nil(meta) -> acc
+        is_nil(value) -> acc
+        true -> meta.filter_apply.(acc, value)
+      end
+    end)
+  end
+
+  defp apply_sort(entries, by, dir) do
+    case Map.get(MachineColumnConfig.column_metadata_map(), by) do
+      %{sort_key: key_fn} when is_function(key_fn, 1) -> Enum.sort_by(entries, key_fn, dir)
+      _ -> entries
+    end
+  end
+
+  defp parse_sort_by(value) when is_binary(value) do
+    case Map.get(MachineColumnConfig.column_metadata_map(), value) do
+      %{sortable?: true} -> value
+      _ -> "name"
+    end
+  end
+
+  defp parse_sort_by(value) when is_atom(value), do: parse_sort_by(Atom.to_string(value))
+  defp parse_sort_by(_), do: "name"
+
+  defp flip_dir(:asc), do: :desc
+  defp flip_dir(_), do: :asc
+
+  defp default_dir(column_id) do
+    case Map.get(MachineColumnConfig.column_metadata_map(), column_id) do
+      %{default_dir: dir} -> dir
+      _ -> :asc
+    end
+  end
+
+  defp sortable_visible(selected_columns) do
+    meta_map = MachineColumnConfig.column_metadata_map()
+
+    selected_columns
+    |> Enum.map(&Map.get(meta_map, &1))
+    |> Enum.filter(&(&1 && &1.sortable?))
+  end
+
+  # Counts only filters that currently hold a value (i.e. are actually
+  # narrowing `@machines`), not every column merely toggled filterable —
+  # a toggled-but-empty filter input doesn't change the result set.
+  defp count_active_filters(active_filters, filter_values) do
+    Enum.count(active_filters, &filter_value_present?(Map.get(filter_values, &1)))
+  end
+
+  defp filter_value_present?(nil), do: false
+  defp filter_value_present?(""), do: false
+
+  defp filter_value_present?(%{} = value),
+    do: Enum.any?(value, fn {_k, v} -> v not in [nil, ""] end)
+
+  defp filter_value_present?(_value), do: true
+
   # ── Event handlers ──────────────────────────────────────────────
 
   @impl true
+  def handle_event("search", %{"search" => search}, socket) do
+    {:noreply, socket |> assign(:search, search) |> assign_machines()}
+  end
+
+  def handle_event("set_sort", %{"sort_by" => by}, socket) do
+    {:noreply, socket |> assign(:sort_by, parse_sort_by(by)) |> assign_machines()}
+  end
+
+  def handle_event("toggle_sort", %{"by" => by}, socket) do
+    by_id = parse_sort_by(by)
+
+    {sort_by, sort_dir} =
+      if socket.assigns.sort_by == by_id,
+        do: {by_id, flip_dir(socket.assigns.sort_dir)},
+        else: {by_id, default_dir(by_id)}
+
+    {:noreply,
+     socket |> assign(:sort_by, sort_by) |> assign(:sort_dir, sort_dir) |> assign_machines()}
+  end
+
+  def handle_event("flip_sort_dir", _params, socket) do
+    {:noreply,
+     socket |> assign(:sort_dir, flip_dir(socket.assigns.sort_dir)) |> assign_machines()}
+  end
+
+  # Bulk-clears every filter value at once — the "Reset" button that
+  # substitutes for FilterChips' per-chip ✕ buttons (see moduledoc).
+  # Leaves `active_filters` (which columns show a filter input) untouched,
+  # only the entered values.
+  def handle_event("clear_all_filters", _params, socket) do
+    {:noreply, socket |> assign(:filter_values, %{}) |> __view_config_changed__()}
+  end
+
   def handle_event("show_delete_confirm", %{"uuid" => uuid, "type" => type}, socket) do
     {:noreply, assign(socket, :confirm_delete, {type, uuid})}
   end
@@ -201,7 +444,209 @@ defmodule PhoenixKitManufacturing.Web.MachinesLive do
       </.admin_page_header>
 
       <div :if={@active_tab == :index}>
-        <.machines_table machines={@machines} locale={@locale} />
+        <.table_default
+          id="machines-list"
+          variant="zebra"
+          size="sm"
+          toggleable
+          items={@machines}
+          card_fields={
+            fn entry ->
+              meta_map = MachineColumnConfig.column_metadata_map()
+
+              Enum.map(@selected_columns, fn col ->
+                %{label: column_label(meta_map, col), value: render_card_value(col, entry)}
+              end)
+            end
+          }
+        >
+          <:toolbar_title>
+            <div class="flex flex-col gap-2 min-w-0">
+              <div class="flex flex-wrap items-center gap-2">
+                <form id="machines-search" phx-change="search" class="contents">
+                  <label class="input input-sm w-full sm:w-64">
+                    <.icon name="hero-magnifying-glass" class="h-4 w-4 opacity-50" />
+                    <input
+                      type="search"
+                      name="search"
+                      value={@search}
+                      placeholder={gettext("Search...")}
+                      class="grow"
+                      phx-debounce="300"
+                    />
+                  </label>
+                </form>
+
+                <div
+                  :if={@active_filters != []}
+                  class="flex items-center gap-2 text-xs text-base-content/60"
+                >
+                  <span>
+                    {gettext("%{count} filters active",
+                      count: count_active_filters(@active_filters, @filter_values)
+                    )}
+                  </span>
+                  <button type="button" phx-click="clear_all_filters" class="btn btn-ghost btn-xs">
+                    {gettext("Reset")}
+                  </button>
+                </div>
+              </div>
+
+              <div :if={@active_filters != []} class="flex flex-wrap items-center gap-3">
+                <%= for id <- @active_filters,
+                          meta = Map.get(MachineColumnConfig.column_metadata_map(), id),
+                          meta do %>
+                  <div class="flex items-center gap-1">
+                    <span class="text-xs text-base-content/50 whitespace-nowrap">
+                      {meta.label.()}:
+                    </span>
+                    <.filter_input meta={meta} value={Map.get(@filter_values, id)} entries={@machines} />
+                  </div>
+                <% end %>
+              </div>
+            </div>
+          </:toolbar_title>
+
+          <:toolbar_actions>
+            <span class="text-sm text-base-content/70 whitespace-nowrap">{gettext("Sort by:")}</span>
+            <form id="machines-sort" phx-change="set_sort" class="join">
+              <select name="sort_by" class="select select-sm join-item">
+                <option
+                  :for={meta <- sortable_visible(@selected_columns)}
+                  value={meta.id}
+                  selected={@sort_by == meta.id}
+                >
+                  {meta.label.()}
+                </option>
+              </select>
+              <button
+                type="button"
+                phx-click="flip_sort_dir"
+                class="btn btn-sm btn-ghost join-item"
+                title={
+                  if @sort_dir == :asc,
+                    do: gettext("Ascending"),
+                    else: gettext("Descending")
+                }
+              >
+                <.icon
+                  name={if @sort_dir == :asc, do: "hero-chevron-up", else: "hero-chevron-down"}
+                  class="w-4 h-4"
+                />
+              </button>
+            </form>
+
+            <button
+              type="button"
+              class="btn btn-outline btn-sm"
+              phx-click="show_column_modal"
+              title={gettext("Customize columns")}
+            >
+              <.icon name="hero-adjustments-horizontal" class="w-4 h-4" />
+              <span class="hidden sm:inline">{gettext("Columns")}</span>
+            </button>
+          </:toolbar_actions>
+
+          <:card_header :let={entry}>
+            <div class="flex items-center gap-2 min-w-0">
+              <.machine_thumbnail machine={entry} />
+              <.link
+                navigate={Paths.machine_edit(entry.uuid)}
+                class="font-medium text-sm link link-hover truncate min-w-0"
+              >
+                {entry.name}
+              </.link>
+            </div>
+          </:card_header>
+          <:card_actions :let={entry}>
+            <.link navigate={Paths.machine_edit(entry.uuid)} class="btn btn-ghost btn-xs">
+              {gettext("Edit")}
+            </.link>
+            <button
+              phx-click="show_delete_confirm"
+              phx-value-uuid={entry.uuid}
+              phx-value-type="machine"
+              class="btn btn-ghost btn-xs text-error"
+            >
+              {gettext("Delete")}
+            </button>
+          </:card_actions>
+
+          <.table_default_header>
+            <.table_default_row hover={false}>
+              <% meta_map = MachineColumnConfig.column_metadata_map() %>
+              <%= for col <- @selected_columns, meta = Map.get(meta_map, col), meta do %>
+                <.table_default_header_cell class={if meta.align == :right, do: "text-right"}>
+                  <%= if meta.sortable? do %>
+                    <.sort_header
+                      by={meta.id}
+                      label={meta.label.()}
+                      sort_by={@sort_by}
+                      sort_dir={@sort_dir}
+                      align={meta.align}
+                    />
+                  <% else %>
+                    {meta.label.()}
+                  <% end %>
+                </.table_default_header_cell>
+              <% end %>
+              <.table_default_header_cell class="text-right whitespace-nowrap">
+                {gettext("Actions")}
+              </.table_default_header_cell>
+            </.table_default_row>
+          </.table_default_header>
+
+          <.table_default_body>
+            <%= if @machines == [] do %>
+              <.table_default_row hover={false}>
+                <.table_default_cell
+                  colspan={length(@selected_columns) + 1}
+                  class="text-center py-10 text-base-content/50"
+                >
+                  <.icon name="hero-cog-6-tooth" class="h-10 w-10 mx-auto mb-2 opacity-50" />
+                  <div class="text-sm font-medium">{gettext("No machines yet.")}</div>
+                </.table_default_cell>
+              </.table_default_row>
+            <% end %>
+            <%= for entry <- @machines do %>
+              <.table_default_row>
+                <% meta_map = MachineColumnConfig.column_metadata_map() %>
+                <%= for col <- @selected_columns, meta = Map.get(meta_map, col), meta do %>
+                  <.table_default_cell class={cell_class(meta)}>
+                    {render_cell(col, entry)}
+                  </.table_default_cell>
+                <% end %>
+                <.table_default_cell class="text-right whitespace-nowrap">
+                  <.table_row_menu mode="dropdown" id={"machine-menu-#{entry.uuid}"}>
+                    <.table_row_menu_link
+                      navigate={Paths.machine_edit(entry.uuid)}
+                      icon="hero-pencil"
+                      label={gettext("Edit")}
+                    />
+                    <.table_row_menu_divider />
+                    <.table_row_menu_button
+                      phx-click="show_delete_confirm"
+                      phx-value-uuid={entry.uuid}
+                      phx-value-type="machine"
+                      icon="hero-trash"
+                      label={gettext("Delete")}
+                      variant="error"
+                    />
+                  </.table_row_menu>
+                </.table_default_cell>
+              </.table_default_row>
+            <% end %>
+          </.table_default_body>
+        </.table_default>
+
+        <ColumnModal.column_modal
+          show={@show_column_modal}
+          column_config={MachineColumnConfig}
+          selected={@selected_columns}
+          active_filters={@active_filters}
+          temp_selected={@temp_selected_columns}
+          temp_active_filters={@temp_active_filters}
+        />
       </div>
 
       <div :if={@active_tab == :types}>
@@ -233,131 +678,242 @@ defmodule PhoenixKitManufacturing.Web.MachinesLive do
     """
   end
 
-  defp machines_table(assigns) do
-    ~H"""
-    <div :if={@machines == []} class="card bg-base-100 shadow">
-      <div class="card-body items-center text-center py-12">
-        <p class="text-base-content/60">{gettext("No machines yet.")}</p>
-      </div>
-    </div>
+  attr(:by, :string, required: true)
+  attr(:label, :string, required: true)
+  attr(:sort_by, :string, required: true)
+  attr(:sort_dir, :atom, required: true)
+  attr(:align, :atom, default: :left)
 
-    <div :if={@machines != []}>
-      <.table_default
-        variant="zebra"
-        size="sm"
-        toggleable={true}
-        id="machines-list"
-        items={@machines}
-        card_fields={
-          fn m ->
-            [
-              %{label: gettext("Code"), value: m.code || "—"},
-              %{label: gettext("Types"), value: type_names(m)},
-              %{
-                label: gettext("Location"),
-                value: Machines.location_label(m, locale: @locale) || "—"
-              },
-              %{label: gettext("Status"), value: status_label(m.status)}
-            ]
-          end
-        }
-      >
-        <.table_default_header>
-          <.table_default_row>
-            <.table_default_header_cell>{gettext("Name")}</.table_default_header_cell>
-            <.table_default_header_cell>{gettext("Code")}</.table_default_header_cell>
-            <.table_default_header_cell>{gettext("Manufacturer")}</.table_default_header_cell>
-            <.table_default_header_cell>{gettext("Types")}</.table_default_header_cell>
-            <.table_default_header_cell>{gettext("Location")}</.table_default_header_cell>
-            <.table_default_header_cell>{gettext("Status")}</.table_default_header_cell>
-            <.table_default_header_cell class="text-right whitespace-nowrap">
-              {gettext("Actions")}
-            </.table_default_header_cell>
-          </.table_default_row>
-        </.table_default_header>
-        <.table_default_body>
-          <.table_default_row :for={machine <- @machines}>
-            <.table_default_cell>
-              <div class="flex items-center gap-2 min-w-0">
-                <.machine_thumbnail machine={machine} />
-                <.link
-                  navigate={Paths.machine_edit(machine.uuid)}
-                  class="link link-hover font-medium"
-                >
-                  {machine.name}
-                </.link>
-              </div>
-            </.table_default_cell>
-            <.table_default_cell class="text-sm text-base-content/60">
-              {machine.code || "—"}
-            </.table_default_cell>
-            <.table_default_cell class="text-sm text-base-content/60">
-              {machine.manufacturer || "—"}
-            </.table_default_cell>
-            <.table_default_cell>
-              <div :if={machine.machine_types != []} class="flex flex-wrap gap-1">
-                <span :for={t <- machine.machine_types} class="badge badge-sm badge-outline">
-                  {t.name}
-                </span>
-              </div>
-              <span :if={machine.machine_types == []} class="text-base-content/40">—</span>
-            </.table_default_cell>
-            <.table_default_cell class="text-sm text-base-content/60">
-              {Machines.location_label(machine, locale: @locale) || "—"}
-            </.table_default_cell>
-            <.table_default_cell>
-              <span class={["badge badge-sm", status_badge_class(machine.status)]}>
-                {status_label(machine.status)}
-              </span>
-            </.table_default_cell>
-            <.table_default_cell class="text-right whitespace-nowrap">
-              <.table_row_menu mode="dropdown" id={"machine-menu-#{machine.uuid}"}>
-                <.table_row_menu_link
-                  navigate={Paths.machine_edit(machine.uuid)}
-                  icon="hero-pencil"
-                  label={gettext("Edit")}
-                />
-                <.table_row_menu_divider />
-                <.table_row_menu_button
-                  phx-click="show_delete_confirm"
-                  phx-value-uuid={machine.uuid}
-                  phx-value-type="machine"
-                  icon="hero-trash"
-                  label={gettext("Delete")}
-                  variant="error"
-                />
-              </.table_row_menu>
-            </.table_default_cell>
-          </.table_default_row>
-        </.table_default_body>
-        <:card_header :let={machine}>
-          <div class="flex items-center gap-2 min-w-0">
-            <.machine_thumbnail machine={machine} />
-            <.link
-              navigate={Paths.machine_edit(machine.uuid)}
-              class="font-medium text-sm link link-hover truncate min-w-0"
-            >
-              {machine.name}
-            </.link>
-          </div>
-        </:card_header>
-        <:card_actions :let={machine}>
-          <.link navigate={Paths.machine_edit(machine.uuid)} class="btn btn-ghost btn-xs">
-            {gettext("Edit")}
-          </.link>
-          <button
-            phx-click="show_delete_confirm"
-            phx-value-uuid={machine.uuid}
-            phx-value-type="machine"
-            class="btn btn-ghost btn-xs text-error"
-          >
-            {gettext("Delete")}
-          </button>
-        </:card_actions>
-      </.table_default>
+  defp sort_header(assigns) do
+    assigns = assign(assigns, :active?, assigns.sort_by == assigns.by)
+
+    ~H"""
+    <button
+      type="button"
+      phx-click="toggle_sort"
+      phx-value-by={@by}
+      class={[
+        "inline-flex items-center gap-1 cursor-pointer select-none",
+        @align == :right && "justify-end w-full"
+      ]}
+    >
+      <span>{@label}</span>
+      <.icon
+        :if={@active?}
+        name={if @sort_dir == :asc, do: "hero-chevron-up-mini", else: "hero-chevron-down-mini"}
+        class="w-3.5 h-3.5"
+      />
+    </button>
+    """
+  end
+
+  # Plain (non-chip) per-column filter input, dispatched on `filter_type`.
+  # Functionally equivalent to PhoenixKitWarehouse's
+  # `FilterChips.input_for_type/1` (same event contract: a
+  # `phx-change="set_filter_value"` form with a hidden `column_id`), minus
+  # the pill/icon/individual-clear-button chrome — see moduledoc.
+  attr(:meta, :map, required: true)
+  attr(:value, :any, default: nil)
+  attr(:entries, :list, default: [])
+
+  defp filter_input(%{meta: %{filter_type: :text}} = assigns) do
+    ~H"""
+    <form phx-change="set_filter_value" class="contents">
+      <input type="hidden" name="column_id" value={@meta.id} />
+      <input
+        type="search"
+        name="value"
+        value={@value || ""}
+        placeholder={gettext("Contains...")}
+        class="input input-xs input-bordered w-32"
+        phx-debounce="300"
+      />
+    </form>
+    """
+  end
+
+  defp filter_input(%{meta: %{filter_type: :enum}} = assigns) do
+    options =
+      case Map.get(assigns.meta, :filter_options) do
+        fun when is_function(fun, 1) -> fun.(assigns.entries)
+        _ -> []
+      end
+
+    assigns = assign(assigns, :options, options)
+
+    ~H"""
+    <form phx-change="set_filter_value" class="contents">
+      <input type="hidden" name="column_id" value={@meta.id} />
+      <select name="value" class="select select-xs select-bordered">
+        <option value="" selected={@value in [nil, ""]}>{gettext("Any")}</option>
+        <option
+          :for={{val, label} <- @options}
+          value={val}
+          selected={to_string(@value) == to_string(val)}
+        >
+          {label}
+        </option>
+      </select>
+    </form>
+    """
+  end
+
+  defp filter_input(%{meta: %{filter_type: :numeric_range}} = assigns) do
+    {min, max} = range_values(assigns.value, "min", "max")
+    assigns = assigns |> assign(:min, min) |> assign(:max, max)
+
+    ~H"""
+    <form phx-change="set_filter_value" class="contents">
+      <input type="hidden" name="column_id" value={@meta.id} />
+      <input
+        type="number"
+        step="any"
+        name="value[min]"
+        value={@min}
+        placeholder={gettext("Min")}
+        class="input input-xs input-bordered w-20"
+        phx-debounce="300"
+      />
+      <span class="text-xs text-base-content/40">–</span>
+      <input
+        type="number"
+        step="any"
+        name="value[max]"
+        value={@max}
+        placeholder={gettext("Max")}
+        class="input input-xs input-bordered w-20"
+        phx-debounce="300"
+      />
+    </form>
+    """
+  end
+
+  defp filter_input(%{meta: %{filter_type: :date_range}} = assigns) do
+    {from, to} = range_values(assigns.value, "from", "to")
+    assigns = assigns |> assign(:from, from) |> assign(:to, to)
+
+    ~H"""
+    <form phx-change="set_filter_value" class="contents">
+      <input type="hidden" name="column_id" value={@meta.id} />
+      <input type="date" name="value[from]" value={@from} class="input input-xs input-bordered w-36" />
+      <span class="text-xs text-base-content/40">–</span>
+      <input type="date" name="value[to]" value={@to} class="input input-xs input-bordered w-36" />
+    </form>
+    """
+  end
+
+  defp range_values(%{} = value, key_a, key_b),
+    do: {Map.get(value, key_a) || "", Map.get(value, key_b) || ""}
+
+  defp range_values(_value, _key_a, _key_b), do: {"", ""}
+
+  # ── Per-column rendering ──────────────────────────────────────────
+
+  defp column_label(meta_map, col) do
+    case Map.get(meta_map, col) do
+      %{label: label_fn} -> label_fn.()
+      _ -> col
+    end
+  end
+
+  defp cell_class(%{align: :right}), do: "text-right text-sm"
+  defp cell_class(_meta), do: "text-sm"
+
+  defp render_cell("name", entry) do
+    assigns = %{entry: entry}
+
+    ~H"""
+    <div class="flex items-center gap-2 min-w-0">
+      <.machine_thumbnail machine={@entry} />
+      <.link navigate={Paths.machine_edit(@entry.uuid)} class="link link-hover font-medium">
+        {@entry.name}
+      </.link>
     </div>
     """
   end
+
+  defp render_cell("status", entry) do
+    assigns = %{entry: entry}
+
+    ~H"""
+    <.status_badge status={@entry.status} label={@entry.status_label} />
+    """
+  end
+
+  defp render_cell("types", entry) do
+    assigns = %{entry: entry}
+
+    ~H"""
+    <.type_badges names={@entry.type_names} />
+    """
+  end
+
+  defp render_cell("commissioned_on", entry), do: fmt_date(entry.commissioned_on)
+  defp render_cell("warranty_until", entry), do: fmt_date(entry.warranty_until)
+  defp render_cell("to_next_on", entry), do: fmt_date(entry.to_next_on)
+  defp render_cell("manufacture_year", entry), do: emdash(entry.manufacture_year)
+  defp render_cell("code", entry), do: emdash(entry.code)
+  defp render_cell("manufacturer", entry), do: emdash(entry.manufacturer)
+  defp render_cell("model", entry), do: emdash(entry.model)
+  defp render_cell("location", entry), do: emdash(entry.location)
+  defp render_cell(_col, _entry), do: "—"
+
+  # Card values: plain text/markup (no row-overlay link — the card header
+  # already links to the machine).
+  defp render_card_value("name", entry), do: entry.name
+
+  defp render_card_value("status", entry) do
+    assigns = %{entry: entry}
+
+    ~H"""
+    <.status_badge status={@entry.status} label={@entry.status_label} />
+    """
+  end
+
+  defp render_card_value("types", entry) do
+    assigns = %{entry: entry}
+
+    ~H"""
+    <.type_badges names={@entry.type_names} />
+    """
+  end
+
+  defp render_card_value("commissioned_on", entry), do: fmt_date(entry.commissioned_on)
+  defp render_card_value("warranty_until", entry), do: fmt_date(entry.warranty_until)
+  defp render_card_value("to_next_on", entry), do: fmt_date(entry.to_next_on)
+  defp render_card_value("manufacture_year", entry), do: emdash(entry.manufacture_year)
+  defp render_card_value("code", entry), do: emdash(entry.code)
+  defp render_card_value("manufacturer", entry), do: emdash(entry.manufacturer)
+  defp render_card_value("model", entry), do: emdash(entry.model)
+  defp render_card_value("location", entry), do: emdash(entry.location)
+  defp render_card_value(_col, _entry), do: "—"
+
+  attr(:status, :string, required: true)
+  attr(:label, :string, required: true)
+
+  defp status_badge(assigns) do
+    ~H"""
+    <span class={["badge badge-sm", status_badge_class(@status)]}>{@label}</span>
+    """
+  end
+
+  attr(:names, :list, required: true)
+
+  defp type_badges(assigns) do
+    ~H"""
+    <div :if={@names != []} class="flex flex-wrap gap-1">
+      <span :for={name <- @names} class="badge badge-sm badge-outline">{name}</span>
+    </div>
+    <span :if={@names == []} class="text-base-content/40">—</span>
+    """
+  end
+
+  defp fmt_date(nil), do: "—"
+  defp fmt_date(%Date{} = date), do: Calendar.strftime(date, "%d.%m.%Y")
+
+  defp emdash(nil), do: "—"
+  defp emdash(""), do: "—"
+  defp emdash(v), do: v
 
   defp types_table(assigns) do
     ~H"""
@@ -451,19 +1007,13 @@ defmodule PhoenixKitManufacturing.Web.MachinesLive do
     """
   end
 
-  defp type_names(%{machine_types: types}) when is_list(types) and types != [] do
-    Enum.map_join(types, ", ", & &1.name)
-  end
-
-  defp type_names(_), do: "—"
-
   # Resolves the Storage file backing a machine's featured image (set via
   # the Files section on MachineFormLive — stored at
   # `machine.data["featured_image_uuid"]`, see `PhoenixKitManufacturing.Attachments`).
-  # Accepts anything carrying a `:data` map — the `%Machine{}` struct today,
-  # and (once `:index` is rewritten onto ColumnConfig) any enriched flat map
-  # that keeps a `:data` key — so this resolution logic only needs writing
-  # once. See dev_docs/IMPLEMENTATION_PLAN.md M13/M17.
+  # Accepts anything carrying a `:data` map — the `%Machine{}` struct
+  # (types_table's underlying data doesn't use this) and the flat maps
+  # produced by `enrich_machines/2` above, so this resolution logic only
+  # needs writing once.
   defp featured_thumbnail_file(%{data: data}) when is_map(data) do
     with uuid when is_binary(uuid) and uuid != "" <- Map.get(data, "featured_image_uuid"),
          %Storage.File{} = file <- safe_get_file(uuid) do

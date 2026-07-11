@@ -44,6 +44,67 @@ defmodule PhoenixKitManufacturing.Web.MachinesLiveTest do
 
       assert html =~ "Shop Floor A"
     end
+
+    test "a machine's type name appears as a badge in the Types column", %{conn: conn} do
+      {:ok, type} = Machines.create_machine_type(%{name: "Laser"})
+      {:ok, machine} = Machines.create_machine(%{name: "Laser-01"})
+      {:ok, _} = Machines.sync_machine_types(machine.uuid, [type.uuid])
+
+      conn = put_test_scope(conn, fake_scope())
+      {:ok, _view, html} = live(conn, "/en/admin/manufacturing/machines")
+
+      assert html =~ "Laser-01"
+      assert html =~ "Laser"
+    end
+  end
+
+  describe "global search" do
+    test "search by machine name narrows the list", %{conn: conn} do
+      {:ok, _m1} = Machines.create_machine(%{name: "CNC Mill"})
+      {:ok, _m2} = Machines.create_machine(%{name: "Laser Cutter"})
+
+      conn = put_test_scope(conn, fake_scope())
+      {:ok, view, _html} = live(conn, "/en/admin/manufacturing/machines")
+
+      html = render_change(view, "search", %{"search" => "laser"})
+
+      assert html =~ "Laser Cutter"
+      refute html =~ "CNC Mill"
+    end
+
+    test "empty search returns all machines", %{conn: conn} do
+      {:ok, _m1} = Machines.create_machine(%{name: "CNC Mill"})
+      {:ok, _m2} = Machines.create_machine(%{name: "Laser Cutter"})
+
+      conn = put_test_scope(conn, fake_scope())
+      {:ok, view, _html} = live(conn, "/en/admin/manufacturing/machines")
+
+      html = render_change(view, "search", %{"search" => ""})
+
+      assert html =~ "CNC Mill"
+      assert html =~ "Laser Cutter"
+    end
+  end
+
+  describe "sort" do
+    test "flipping sort direction reverses the list order", %{conn: conn} do
+      {:ok, _} = Machines.create_machine(%{name: "Alpha"})
+      {:ok, _} = Machines.create_machine(%{name: "Zeta"})
+
+      conn = put_test_scope(conn, fake_scope())
+      {:ok, view, html_asc} = live(conn, "/en/admin/manufacturing/machines")
+
+      # Default is ascending by name — Alpha before Zeta
+      asc_pos_alpha = :binary.match(html_asc, "Alpha") |> elem(0)
+      asc_pos_zeta = :binary.match(html_asc, "Zeta") |> elem(0)
+      assert asc_pos_alpha < asc_pos_zeta
+
+      html_desc = render_click(view, "flip_sort_dir", %{})
+
+      desc_pos_alpha = :binary.match(html_desc, "Alpha") |> elem(0)
+      desc_pos_zeta = :binary.match(html_desc, "Zeta") |> elem(0)
+      assert desc_pos_zeta < desc_pos_alpha
+    end
   end
 
   describe "machine form" do

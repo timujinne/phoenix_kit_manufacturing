@@ -4,18 +4,17 @@ defmodule PhoenixKitManufacturing.ColumnConfig.Machines do
   (`PhoenixKitManufacturing.Web.MachinesLive`, `:index`).
 
   Operates on enriched machine maps of shape `%{uuid, name, code, status,
-  status_label, location, manufacturer, model, manufacture_year,
-  commissioned_on, warranty_until, to_next_on}`, built by an
-  `enrich_machines/1` in the LiveView the same way
+  status_label, location, types_csv, type_names, manufacturer, model,
+  manufacture_year, commissioned_on, warranty_until, to_next_on, data}`,
+  built by `enrich_machines/2` in the LiveView the same way
   `PhoenixKitWarehouse.ColumnConfig.Inventories`'s flat maps are built by
   `enrich_documents/1` in `inventories_live.ex`.
 
-  A `types` column (badges list, `:enum` filter over distinct linked type
-  names) is intentionally **not** defined yet: it depends on a `:types_csv`
-  key that `enrich_machines/1` doesn't produce until the Machines index is
-  rewritten onto this engine (`dev_docs/IMPLEMENTATION_PLAN.md` M17). Add it
-  here once that key exists on every entry — see the plan's mandatory
-  review correction #1.
+  `types_csv` is the sorted, comma-joined list of machine type names (e.g.
+  `"CNC, Milling"`) used as the `:enum` filter key — `distinct_options/2`
+  returns distinct CSV strings and `enum_filter/1` matches on the full CSV.
+  `type_names` (a sorted list of the same strings) is kept on the enriched
+  map for badge rendering in the LiveView without re-splitting the CSV.
   """
 
   use PhoenixKitManufacturing.ColumnConfig, scope: "manufacturing_machines"
@@ -72,6 +71,17 @@ defmodule PhoenixKitManufacturing.ColumnConfig.Machines do
         filterable?: true,
         filter_type: :text,
         filter_apply: text_filter(&(&1.location || ""))
+      },
+      %{
+        id: "types",
+        label: fn -> gettext("Types") end,
+        default?: true,
+        align: :left,
+        sortable?: false,
+        filterable?: true,
+        filter_type: :enum,
+        filter_options: fn entries -> distinct_options(entries, :types_csv) end,
+        filter_apply: enum_filter(&(&1.types_csv || ""))
       },
       %{
         id: "manufacturer",
