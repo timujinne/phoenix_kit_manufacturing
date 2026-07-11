@@ -35,6 +35,7 @@ defmodule PhoenixKitManufacturing.Test.Router do
       live("/machines/types", MachinesLive, :types)
       live("/machines/types/new", MachineTypeFormLive, :new)
       live("/machines/types/:uuid/edit", MachineTypeFormLive, :edit)
+      live("/machines/operations", MachinesLive, :operations)
       live("/machines/operations/new", OperationFormLive, :new)
       live("/machines/operations/:uuid/edit", OperationFormLive, :edit)
       live("/machines/:uuid/edit", MachineFormLive, :edit)

@@ -3,7 +3,7 @@ defmodule PhoenixKitManufacturing.Web.MachinesLiveTest do
   # unavailable (see test_helper.exs).
   use PhoenixKitManufacturing.LiveCase
 
-  alias PhoenixKitManufacturing.Machines
+  alias PhoenixKitManufacturing.{Machines, Operations}
 
   describe "list pages" do
     test "machines list renders the empty state", %{conn: conn} do
@@ -16,6 +16,36 @@ defmodule PhoenixKitManufacturing.Web.MachinesLiveTest do
       conn = put_test_scope(conn, fake_scope())
       {:ok, _view, html} = live(conn, "/en/admin/manufacturing/machines/types")
       assert html =~ "No machine types yet."
+    end
+
+    test "operations list renders the empty state", %{conn: conn} do
+      conn = put_test_scope(conn, fake_scope())
+      {:ok, _view, html} = live(conn, "/en/admin/manufacturing/machines/operations")
+      assert html =~ "No operations yet."
+    end
+
+    test "an existing operation appears in the list with its unit and formatted base norm", %{
+      conn: conn
+    } do
+      {:ok, _op} =
+        Operations.create_operation(%{name: "Cutting", unit: "pcs", base_time_norm_seconds: 125})
+
+      conn = put_test_scope(conn, fake_scope())
+      {:ok, _view, html} = live(conn, "/en/admin/manufacturing/machines/operations")
+
+      assert html =~ "Cutting"
+      assert html =~ "pcs"
+      assert html =~ "00:02:05"
+    end
+
+    test "an operation without a base norm renders an em dash", %{conn: conn} do
+      {:ok, _op} = Operations.create_operation(%{name: "Inspection"})
+
+      conn = put_test_scope(conn, fake_scope())
+      {:ok, _view, html} = live(conn, "/en/admin/manufacturing/machines/operations")
+
+      assert html =~ "Inspection"
+      assert html =~ "—"
     end
 
     test "an existing machine appears in the list", %{conn: conn} do
@@ -148,6 +178,34 @@ defmodule PhoenixKitManufacturing.Web.MachinesLiveTest do
       html = render_click(view, "delete_machine", %{})
       assert html =~ "No machines yet."
       assert Machines.count_machines() == 0
+    end
+
+    test "deleting an operation removes it from the list", %{conn: conn} do
+      {:ok, operation} = Operations.create_operation(%{name: "To Delete"})
+      conn = put_test_scope(conn, fake_scope())
+      {:ok, view, _html} = live(conn, "/en/admin/manufacturing/machines/operations")
+
+      view
+      |> element(~s{button[phx-value-uuid="#{operation.uuid}"][phx-value-type="operation"]})
+      |> render_click()
+
+      html = render_click(view, "delete_operation", %{})
+      assert html =~ "No operations yet."
+      assert Operations.count_operations() == 0
+    end
+
+    test "cancelling an operation delete leaves it in the list", %{conn: conn} do
+      {:ok, operation} = Operations.create_operation(%{name: "Keep Me"})
+      conn = put_test_scope(conn, fake_scope())
+      {:ok, view, _html} = live(conn, "/en/admin/manufacturing/machines/operations")
+
+      view
+      |> element(~s{button[phx-value-uuid="#{operation.uuid}"][phx-value-type="operation"]})
+      |> render_click()
+
+      html = render_click(view, "cancel_delete", %{})
+      assert html =~ "Keep Me"
+      assert Operations.count_operations() == 1
     end
   end
 
