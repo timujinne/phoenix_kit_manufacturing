@@ -6,10 +6,22 @@ defmodule PhoenixKitManufacturing.Schemas.Machine do
   laser cutter, etc. Machines are categorized by many-to-many
   `MachineType` links, so a single machine can carry several type tags.
 
-  The freeform `metadata` JSONB column holds passport/spec fields that are
-  not yet modeled as columns (power rating, working area, commissioning
-  date, maintenance schedule…), so early iterations don't need a migration
-  for every new attribute. `data` holds multilang translations.
+  The passport columns (`model`, `manufacture_year`, `commissioned_on`,
+  `warranty_until`, `to_last_on`, `to_interval_days`, `to_next_on`,
+  `notes`) and the soft location link (`location_uuid`, `space_uuid`) are
+  first-class columns as of schema V2. `location_uuid`/`space_uuid` are
+  intentionally *not* `belongs_to` associations — `phoenix_kit_locations`
+  is a soft, optional cross-module reference read via
+  `PhoenixKitManufacturing.Machines.location_label/2`, never joined.
+
+  `to_next_on` is auto-computed from `to_last_on` + `to_interval_days`
+  whenever both are present and the caller didn't explicitly submit a
+  `to_next_on` value of its own — see `maybe_compute_next_maintenance/1`.
+
+  The freeform `metadata` JSONB column holds the remaining passport/spec
+  fields driven by each linked machine type's `field_template` (power
+  rating, working area, …) that aren't modeled as columns here. `data`
+  holds multilang translations.
   """
 
   use Ecto.Schema
@@ -20,20 +32,38 @@ defmodule PhoenixKitManufacturing.Schemas.Machine do
   @primary_key {:uuid, UUIDv7, autogenerate: true}
   @foreign_key_type UUIDv7
 
-  @statuses ~w(active maintenance decommissioned)
+  @statuses ~w(active maintenance repair mothballed decommissioned)
 
   schema "phoenix_kit_machines" do
     field(:name, :string)
     # Short code / inventory number (e.g. "CNC-01").
     field(:code, :string)
     field(:manufacturer, :string)
+    field(:model, :string)
     field(:serial_number, :string)
     field(:description, :string)
+    field(:manufacture_year, :integer)
 
-    # Freeform location note. A future revision may link this to
-    # phoenix_kit_locations by UUID; kept as text to avoid a hard
-    # cross-module dependency for now.
+    # Freeform legacy location note, still shown for machines that predate
+    # the location_uuid/space_uuid soft link. New records use the link
+    # instead (see PhoenixKitManufacturing.Machines.location_label/2).
     field(:location_note, :string)
+
+    # Soft cross-module reference into phoenix_kit_locations — no
+    # belongs_to/FK on purpose (that module may not be installed/migrated
+    # on every host).
+    field(:location_uuid, :binary_id)
+    field(:space_uuid, :binary_id)
+
+    # Maintenance schedule: last service date, service interval, and the
+    # (auto-computed, unless overridden) next due date.
+    field(:commissioned_on, :date)
+    field(:warranty_until, :date)
+    field(:to_last_on, :date)
+    field(:to_interval_days, :integer)
+    field(:to_next_on, :date)
+
+    field(:notes, :string)
 
     field(:status, :string, default: "active")
 
@@ -57,9 +87,19 @@ defmodule PhoenixKitManufacturing.Schemas.Machine do
   @optional_fields [
     :code,
     :manufacturer,
+    :model,
     :serial_number,
     :description,
+    :manufacture_year,
     :location_note,
+    :location_uuid,
+    :space_uuid,
+    :commissioned_on,
+    :warranty_until,
+    :to_last_on,
+    :to_interval_days,
+    :to_next_on,
+    :notes,
     :status,
     :data,
     :metadata
@@ -74,13 +114,35 @@ defmodule PhoenixKitManufacturing.Schemas.Machine do
     |> validate_length(:name, min: 1, max: 255)
     |> validate_length(:code, max: 100)
     |> validate_length(:manufacturer, max: 255)
+    |> validate_length(:model, max: 255)
     |> validate_length(:serial_number, max: 255)
     |> validate_length(:description, max: 2000)
     |> validate_length(:location_note, max: 500)
+    |> validate_length(:notes, max: 2000)
+    |> validate_number(:to_interval_days, greater_than: 0)
     |> validate_inclusion(:status, @statuses)
+    |> maybe_compute_next_maintenance()
   end
 
   @doc "The list of valid status values."
   @spec statuses() :: [String.t()]
   def statuses, do: @statuses
+
+  # Keeps `to_next_on` in sync with `to_last_on` + `to_interval_days` when
+  # both are present and the caller isn't explicitly overriding
+  # `to_next_on` in this very changeset — an explicit `to_next_on` change
+  # always wins. Runs last so it sees the final `to_last_on`/
+  # `to_interval_days` values from the rest of the pipeline.
+  @spec maybe_compute_next_maintenance(Ecto.Changeset.t()) :: Ecto.Changeset.t()
+  defp maybe_compute_next_maintenance(changeset) do
+    to_last_on = get_field(changeset, :to_last_on)
+    to_interval_days = get_field(changeset, :to_interval_days)
+    to_next_on_overridden? = not is_nil(get_change(changeset, :to_next_on))
+
+    if to_last_on && to_interval_days && not to_next_on_overridden? do
+      put_change(changeset, :to_next_on, Date.add(to_last_on, to_interval_days))
+    else
+      changeset
+    end
+  end
 end
