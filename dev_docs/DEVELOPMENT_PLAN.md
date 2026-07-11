@@ -124,3 +124,23 @@
 8. **Миграции — решено**: собственный `migration_module/0` в модуле (механизм ядра подтверждён: автообнаружение через ModuleDiscovery, `mix phoenix_kit.update` генерирует обёртку в host `priv/repo/migrations`). Мы — первый потребитель: перед реализацией сверить сигнатуры (`migrated_version_runtime/1`, `current_version/0`) с исходником `PhoenixKit.Migrations.Postgres`; идемпотентные IF NOT EXISTS-гарды + `@disable_ddl_transaction` (PgBouncer). Таблицы: `phoenix_kit_manufacturing_*`.
 9. **Проекты/заказы**: мягкие ссылки source_refs; этапы производства отдаются в таймлайн проекта через провайдер-контракт — Gantt живёт только в phoenix_kit_projects, производство таймлайн не дублирует.
 10. **Меню**: подпункты Machines / Machine types / Operations (parent: :manufacturing, priorities 155–157) + hidden CRUD tabs; рестарт для discovery.
+
+
+## В. Gap-анализ после upstream v0.2.0 (2026-07-11)
+
+Мейнтейнер реализовал Machines v0.2 сам. Сверка с §Б (полный отчёт — исследование 2026-07-11):
+
+| §Б | Статус upstream | Что осталось нам (волна v0.2.x) |
+|---|---|---|
+| 1. Паспорт станка | PARTIAL: name/code/manufacturer/serial/description/location_note(текст)/status(3)/data/metadata | model, год, ввод в экспл., гарантия, даты ТО; статусы +repair/+mothballed; location_uuid+space_uuid (наш PlacePicker из locations v0.5!) вместо/рядом с location_note; field_template на типе + динамический рендер metadata |
+| 2. Типы станков | SHIPPED (M2M assignments) | только field_template (см. выше) |
+| 3. Операции | MISSING | справочник (name, unit, норма) + M2M станок↔операция с переопределением нормы |
+| 4. Причины брака | MISSING | справочник |
+| 5. Даты ТО | MISSING | поля в паспорт (журнал — отложен, как решено) |
+| 6. Файлы/фото | MISSING | locations-Attachments паттерн (folder_uuid/featured_image_uuid в data), фото в карточке/списке |
+| 7. Обвязка | PARTIAL: activity log есть; index без streams есть; hidden CRUD tabs есть | ColumnConfig/ColumnManagement/ViewConfigs (warehouse-паттерн) + Comments (resource_type "machine") |
+| 8. Миграции | SHIPPED (migration_module, V1, идемпотентность) | добавить @disable_ddl_transaction; новые поля/таблицы = V2+ |
+| 9. Проекты/заказы | ожидаемо нет (v0.3+) | вне волны |
+| 10. Меню | SHIPPED (Dashboard/Machines/Types 155-157) | + подтаб Operations |
+
+Принцип волны: **структура и стиль мейнтейнера — базис** (single-page card формы, его схемы/миграции расширяем V2, его конвенции UI), наши дополнения — поверх, PR в upstream по готовности.
