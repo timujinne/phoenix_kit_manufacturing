@@ -92,22 +92,59 @@ defmodule PhoenixKitManufacturingTest do
       end
     end
 
-    test "includes Machines and Types subtabs pointing to MachinesLive" do
+    test "includes Machines, Types and Operations subtabs pointing to MachinesLive" do
       tabs = PhoenixKitManufacturing.admin_tabs()
       machines = Enum.find(tabs, &(&1.id == :manufacturing_machines))
       types = Enum.find(tabs, &(&1.id == :manufacturing_types))
+      operations = Enum.find(tabs, &(&1.id == :manufacturing_operations))
 
       assert machines.path == "manufacturing/machines"
       assert machines.live_view == {PhoenixKitManufacturing.Web.MachinesLive, :index}
       assert types.path == "manufacturing/machines/types"
       assert types.live_view == {PhoenixKitManufacturing.Web.MachinesLive, :types}
+      assert operations.path == "manufacturing/machines/operations"
+      assert operations.live_view == {PhoenixKitManufacturing.Web.MachinesLive, :operations}
     end
 
-    test "the wildcard :uuid machine-edit route is the last tab" do
+    test "includes hidden New/Edit Operation tabs pointing to OperationFormLive" do
+      tabs = PhoenixKitManufacturing.admin_tabs()
+      new_tab = Enum.find(tabs, &(&1.id == :manufacturing_operation_new))
+      edit_tab = Enum.find(tabs, &(&1.id == :manufacturing_operation_edit))
+
+      assert new_tab.path == "manufacturing/machines/operations/new"
+      assert new_tab.visible == false
+      assert new_tab.live_view == {PhoenixKitManufacturing.Web.OperationFormLive, :new}
+
+      assert edit_tab.path == "manufacturing/machines/operations/:uuid/edit"
+      assert edit_tab.visible == false
+      assert edit_tab.live_view == {PhoenixKitManufacturing.Web.OperationFormLive, :edit}
+    end
+
+    test "the Machines tab's regex match does not swallow the Operations subtree" do
+      machines_tab =
+        Enum.find(PhoenixKitManufacturing.admin_tabs(), &(&1.id == :manufacturing_machines))
+
+      refute PhoenixKit.Dashboard.Tab.matches_path?(
+               machines_tab,
+               "manufacturing/machines/operations"
+             )
+
+      refute PhoenixKit.Dashboard.Tab.matches_path?(
+               machines_tab,
+               "manufacturing/machines/operations/new"
+             )
+
+      refute PhoenixKit.Dashboard.Tab.matches_path?(
+               machines_tab,
+               "manufacturing/machines/operations/018f0000-0000-7000-8000-000000000000/edit"
+             )
+    end
+
+    test "the wildcard :uuid operation-edit route is the last tab" do
       tabs = PhoenixKitManufacturing.admin_tabs()
       last = List.last(tabs)
-      assert last.id == :manufacturing_machine_edit
-      assert last.path == "manufacturing/machines/:uuid/edit"
+      assert last.id == :manufacturing_operation_edit
+      assert last.path == "manufacturing/machines/operations/:uuid/edit"
     end
   end
 

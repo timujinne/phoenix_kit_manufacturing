@@ -105,7 +105,7 @@ defmodule PhoenixKitManufacturing do
         redirect_to_first_subtab: true,
         live_view: {PhoenixKitManufacturing.Web.DashboardLive, :index}
       },
-      # Subtabs — Dashboard (landing), Machines, Types
+      # Subtabs — Dashboard (landing), Machines, Types, Operations
       %Tab{
         id: :manufacturing_dashboard,
         label: "Dashboard",
@@ -144,13 +144,24 @@ defmodule PhoenixKitManufacturing do
         parent: :manufacturing,
         live_view: {PhoenixKitManufacturing.Web.MachinesLive, :types}
       },
+      %Tab{
+        id: :manufacturing_operations,
+        label: "Operations",
+        icon: "hero-clock",
+        path: "manufacturing/machines/operations",
+        priority: 158,
+        level: :admin,
+        permission: module_key(),
+        parent: :manufacturing,
+        live_view: {PhoenixKitManufacturing.Web.MachinesLive, :operations}
+      },
       # Static paths MUST come before wildcard :uuid paths.
       %Tab{
         id: :manufacturing_machine_new,
         label: "New Machine",
         icon: "hero-plus",
         path: "manufacturing/machines/new",
-        priority: 158,
+        priority: 159,
         level: :admin,
         permission: module_key(),
         parent: :manufacturing,
@@ -162,7 +173,7 @@ defmodule PhoenixKitManufacturing do
         label: "New Type",
         icon: "hero-plus",
         path: "manufacturing/machines/types/new",
-        priority: 159,
+        priority: 160,
         level: :admin,
         permission: module_key(),
         parent: :manufacturing,
@@ -170,29 +181,53 @@ defmodule PhoenixKitManufacturing do
         live_view: {PhoenixKitManufacturing.Web.MachineTypeFormLive, :new}
       },
       %Tab{
+        id: :manufacturing_operation_new,
+        label: "New Operation",
+        icon: "hero-plus",
+        path: "manufacturing/machines/operations/new",
+        priority: 161,
+        level: :admin,
+        permission: module_key(),
+        parent: :manufacturing,
+        visible: false,
+        live_view: {PhoenixKitManufacturing.Web.OperationFormLive, :new}
+      },
+      # Wildcard :uuid routes LAST.
+      %Tab{
         id: :manufacturing_type_edit,
         label: "Edit Type",
         icon: "hero-pencil-square",
         path: "manufacturing/machines/types/:uuid/edit",
-        priority: 160,
+        priority: 162,
         level: :admin,
         permission: module_key(),
         parent: :manufacturing,
         visible: false,
         live_view: {PhoenixKitManufacturing.Web.MachineTypeFormLive, :edit}
       },
-      # Wildcard :uuid routes LAST.
       %Tab{
         id: :manufacturing_machine_edit,
         label: "Edit Machine",
         icon: "hero-pencil-square",
         path: "manufacturing/machines/:uuid/edit",
-        priority: 161,
+        priority: 163,
         level: :admin,
         permission: module_key(),
         parent: :manufacturing,
         visible: false,
         live_view: {PhoenixKitManufacturing.Web.MachineFormLive, :edit}
+      },
+      %Tab{
+        id: :manufacturing_operation_edit,
+        label: "Edit Operation",
+        icon: "hero-pencil-square",
+        path: "manufacturing/machines/operations/:uuid/edit",
+        priority: 164,
+        level: :admin,
+        permission: module_key(),
+        parent: :manufacturing,
+        visible: false,
+        live_view: {PhoenixKitManufacturing.Web.OperationFormLive, :edit}
       }
     ]
   end
