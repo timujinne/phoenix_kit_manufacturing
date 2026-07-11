@@ -1,5 +1,25 @@
 defmodule PhoenixKitManufacturing.Web.MachineTypeFormLive do
-  @moduledoc "Create/edit form for machine types, with multilang name/description."
+  @moduledoc """
+  Create/edit form for machine types, with multilang name/description.
+
+  ## `field_template` row editor
+
+  Each machine type can define a `field_template` — the list of dynamic
+  `metadata` fields rendered on machines linked to this type (see
+  `Schemas.MachineType`). `@field_template_rows` is a plain list of
+  string-keyed maps, not bound to the changeset: `field_template` is a
+  JSONB array, not a set of per-row changeset fields, so every row input
+  uses a raw `name="machine_type[field_template][IDX][key]"` (not
+  `@form[:atom]`) — the same raw-name convention `MachineFormLive` uses for
+  its dynamic `metadata` inputs.
+
+  `@field_template_rows` is the single source of truth for rendering *and*
+  for `add_field_row`/`remove_field_row`: `phx-change="validate"` fires on
+  every keystroke/select change within `<.form>` and refreshes the assign
+  from the submitted params, so by the time a `phx-click` (which carries no
+  form values) adds or removes a row, the assign already reflects whatever
+  the user last typed.
+  """
 
   use Phoenix.LiveView
   use Gettext, backend: PhoenixKitManufacturing.Gettext
@@ -8,6 +28,10 @@ defmodule PhoenixKitManufacturing.Web.MachineTypeFormLive do
 
   import PhoenixKitWeb.Components.MultilangForm
   import PhoenixKitWeb.Components.Core.AdminPageHeader, only: [admin_page_header: 1]
+  import PhoenixKitWeb.Components.Core.Checkbox
+  import PhoenixKitWeb.Components.Core.FormFieldError, only: [error: 1]
+  import PhoenixKitWeb.Components.Core.Icon, only: [icon: 1]
+  import PhoenixKitWeb.Components.Core.Input
   import PhoenixKitWeb.Components.Core.Select
 
   alias PhoenixKitManufacturing.{Errors, Machines, Paths}
@@ -35,7 +59,8 @@ defmodule PhoenixKitManufacturing.Web.MachineTypeFormLive do
          |> assign(
            page_title: page_title(action, machine_type),
            action: action,
-           machine_type: machine_type
+           machine_type: machine_type,
+           field_template_rows: load_field_template_rows(machine_type.field_template)
          )
          |> assign_form(changeset)
          |> mount_multilang()}
@@ -68,9 +93,31 @@ defmodule PhoenixKitManufacturing.Web.MachineTypeFormLive do
     {:noreply, handle_switch_language(socket, lang_code)}
   end
 
+  def handle_event("add_field_row", _params, socket) do
+    new_row = %{
+      "key" => "",
+      "label" => "",
+      "type" => "text",
+      "unit" => "",
+      "required" => false,
+      "options" => []
+    }
+
+    {:noreply, update(socket, :field_template_rows, &(&1 ++ [new_row]))}
+  end
+
+  def handle_event("remove_field_row", %{"index" => index}, socket) do
+    index = String.to_integer(index)
+    {:noreply, update(socket, :field_template_rows, &List.delete_at(&1, index))}
+  end
+
   def handle_event("validate", %{"machine_type" => params}, socket) do
+    field_template_rows = field_template_rows_from_params(params["field_template"])
+
     params =
-      merge_translatable_params(params, socket, @translatable_fields,
+      params
+      |> Map.put("field_template", field_template_rows)
+      |> merge_translatable_params(socket, @translatable_fields,
         changeset: socket.assigns.changeset,
         preserve_fields: @preserve_fields
       )
@@ -80,17 +127,26 @@ defmodule PhoenixKitManufacturing.Web.MachineTypeFormLive do
       |> Machines.change_machine_type(params)
       |> Map.put(:action, :validate)
 
-    {:noreply, assign_form(socket, changeset)}
+    {:noreply,
+     socket
+     |> assign(:field_template_rows, field_template_rows)
+     |> assign_form(changeset)}
   end
 
   def handle_event("save", %{"machine_type" => params}, socket) do
+    field_template_rows = field_template_rows_from_params(params["field_template"])
+
     params =
-      merge_translatable_params(params, socket, @translatable_fields,
+      params
+      |> Map.put("field_template", field_template_rows)
+      |> merge_translatable_params(socket, @translatable_fields,
         changeset: socket.assigns.changeset,
         preserve_fields: @preserve_fields
       )
 
-    save_machine_type(socket, socket.assigns.action, params)
+    socket
+    |> assign(:field_template_rows, field_template_rows)
+    |> save_machine_type(socket.assigns.action, params)
   end
 
   # Defensive catch-all for unmatched messages. Logs at :debug.
@@ -132,6 +188,87 @@ defmodule PhoenixKitManufacturing.Web.MachineTypeFormLive do
       _ -> []
     end
   end
+
+  # ═══════════════════════════════════════════════════════════════════
+  # field_template row editor — plain assign, not changeset-bound (see
+  # moduledoc). Both the DB-loaded shape and the submitted-params shape
+  # normalize into the same canonical row: string key/label/type/unit, a
+  # real boolean `required`, a real list `options` (parsed from the single
+  # comma-separated "Options" input on submit).
+  # ═══════════════════════════════════════════════════════════════════
+
+  defp load_field_template_rows(field_template) when is_list(field_template) do
+    Enum.map(field_template, &normalize_loaded_field_template_row/1)
+  end
+
+  defp load_field_template_rows(_field_template), do: []
+
+  # `machine_type.field_template` is always string-keyed here — it comes
+  # straight off the Ecto struct (JSONB decode never produces atom keys).
+  defp normalize_loaded_field_template_row(row) when is_map(row) do
+    %{
+      "key" => Map.get(row, "key", ""),
+      "label" => Map.get(row, "label", ""),
+      "type" => Map.get(row, "type", "text"),
+      "unit" => Map.get(row, "unit") || "",
+      "required" => Map.get(row, "required") == true,
+      "options" => normalize_options_list(Map.get(row, "options"))
+    }
+  end
+
+  defp normalize_options_list(options) when is_list(options), do: options
+  defp normalize_options_list(_options), do: []
+
+  # `params["field_template"]` arrives as a map with numeric string keys
+  # (`%{"0" => %{...}, "1" => %{...}}` — standard HTML indexed-field
+  # encoding, Plug never auto-collapses this into a list), sorted here into
+  # row order before Ecto's `{:array, :map}` cast can accept it.
+  defp field_template_rows_from_params(field_template_params)
+       when is_map(field_template_params) do
+    field_template_params
+    |> Enum.sort_by(fn {index, _row} -> String.to_integer(index) end)
+    |> Enum.map(fn {_index, row} -> normalize_submitted_field_template_row(row) end)
+  end
+
+  defp field_template_rows_from_params(_field_template_params), do: []
+
+  defp normalize_submitted_field_template_row(row) do
+    type = Map.get(row, "type", "text")
+
+    %{
+      "key" => String.trim(Map.get(row, "key", "")),
+      "label" => String.trim(Map.get(row, "label", "")),
+      "type" => type,
+      "unit" => String.trim(Map.get(row, "unit", "")),
+      "required" => Map.get(row, "required") in ["true", "on"],
+      "options" => parse_field_template_options(type, Map.get(row, "options", ""))
+    }
+  end
+
+  # Only `type == "select"` renders the "Options" input at all; every other
+  # type stores an empty list (valid per `MachineType`'s own validation —
+  # `options` is optional outside `select`).
+  defp parse_field_template_options("select", options) when is_binary(options) do
+    options
+    |> String.split(",")
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+  end
+
+  defp parse_field_template_options(_type, _options), do: []
+
+  defp field_type_options do
+    [
+      {gettext("Text"), "text"},
+      {gettext("Number"), "number"},
+      {gettext("Date"), "date"},
+      {gettext("Boolean"), "boolean"},
+      {gettext("Select"), "select"}
+    ]
+  end
+
+  defp options_text(options) when is_list(options), do: Enum.join(options, ", ")
+  defp options_text(_options), do: ""
 
   @impl true
   def render(assigns) do
@@ -228,6 +365,37 @@ defmodule PhoenixKitManufacturing.Web.MachineTypeFormLive do
 
               <div class="divider my-0"></div>
 
+              <div class="flex flex-col gap-3">
+                <div class="flex items-center justify-between gap-2">
+                  <div class="flex items-center gap-2">
+                    <.icon name="hero-clipboard-document-list" class="w-5 h-5 text-base-content/70" />
+                    <span class="font-medium">{gettext("Specification Fields")}</span>
+                  </div>
+                  <button type="button" phx-click="add_field_row" class="btn btn-ghost btn-sm gap-1">
+                    <.icon name="hero-plus" class="w-4 h-4" />{gettext("Add field")}
+                  </button>
+                </div>
+                <p class="text-sm text-base-content/50 -mt-2">
+                  {gettext("Extra fields rendered on the machine form for machines linked to this type.")}
+                </p>
+
+                <p :if={@field_template_rows == []} class="text-sm text-base-content/50 italic">
+                  {gettext("No fields yet — click \"Add field\" to define one.")}
+                </p>
+
+                <.field_template_row
+                  :for={{row, index} <- Enum.with_index(@field_template_rows)}
+                  row={row}
+                  index={index}
+                />
+
+                <.error :for={msg <- Enum.map(@form[:field_template].errors, &translate_error/1)}>
+                  {msg}
+                </.error>
+              </div>
+
+              <div class="divider my-0"></div>
+
               <div class="flex justify-end gap-3">
                 <.link navigate={Paths.types()} class="btn btn-ghost">{gettext("Cancel")}</.link>
                 <button
@@ -241,6 +409,73 @@ defmodule PhoenixKitManufacturing.Web.MachineTypeFormLive do
             </div>
           </div>
         </.form>
+      </div>
+    </div>
+    """
+  end
+
+  attr(:row, :map, required: true)
+  attr(:index, :integer, required: true)
+
+  defp field_template_row(assigns) do
+    ~H"""
+    <div class="rounded-box border border-base-300 p-4 flex flex-col gap-3">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <.input
+          type="text"
+          name={"machine_type[field_template][#{@index}][key]"}
+          value={@row["key"]}
+          label={gettext("Key")}
+          placeholder={gettext("e.g., power_kw")}
+        />
+        <.input
+          type="text"
+          name={"machine_type[field_template][#{@index}][label]"}
+          value={@row["label"]}
+          label={gettext("Label")}
+          placeholder={gettext("e.g., Power")}
+        />
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <.select
+          name={"machine_type[field_template][#{@index}][type]"}
+          value={@row["type"]}
+          label={gettext("Type")}
+          options={field_type_options()}
+        />
+        <.input
+          type="text"
+          name={"machine_type[field_template][#{@index}][unit]"}
+          value={@row["unit"]}
+          label={gettext("Unit")}
+          placeholder={gettext("optional, e.g., kW")}
+        />
+      </div>
+
+      <.input
+        :if={@row["type"] == "select"}
+        type="text"
+        name={"machine_type[field_template][#{@index}][options]"}
+        value={options_text(@row["options"])}
+        label={gettext("Options (comma-separated)")}
+        placeholder={gettext("e.g., 110V, 220V")}
+      />
+
+      <div class="flex items-center justify-between gap-3">
+        <.checkbox
+          name={"machine_type[field_template][#{@index}][required]"}
+          checked={@row["required"]}
+          label={gettext("Required")}
+        />
+        <button
+          type="button"
+          phx-click="remove_field_row"
+          phx-value-index={@index}
+          class="btn btn-ghost btn-sm text-error gap-1"
+        >
+          <.icon name="hero-x-mark" class="w-4 h-4" />{gettext("Remove")}
+        </button>
       </div>
     </div>
     """
