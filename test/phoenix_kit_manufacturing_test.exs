@@ -162,6 +162,27 @@ defmodule PhoenixKitManufacturingTest do
       assert edit_tab.live_view == {PhoenixKitManufacturing.Web.DefectReasonFormLive, :edit}
     end
 
+    test "includes hidden Machine Operations/Files/Comments tabs pointing to MachineFormLive" do
+      tabs = PhoenixKitManufacturing.admin_tabs()
+      operations_tab = Enum.find(tabs, &(&1.id == :manufacturing_machine_operations))
+      files_tab = Enum.find(tabs, &(&1.id == :manufacturing_machine_files))
+      comments_tab = Enum.find(tabs, &(&1.id == :manufacturing_machine_comments))
+
+      assert operations_tab.path == "manufacturing/machines/:uuid/operations"
+      assert operations_tab.visible == false
+
+      assert operations_tab.live_view ==
+               {PhoenixKitManufacturing.Web.MachineFormLive, :operations}
+
+      assert files_tab.path == "manufacturing/machines/:uuid/files"
+      assert files_tab.visible == false
+      assert files_tab.live_view == {PhoenixKitManufacturing.Web.MachineFormLive, :files}
+
+      assert comments_tab.path == "manufacturing/machines/:uuid/comments"
+      assert comments_tab.visible == false
+      assert comments_tab.live_view == {PhoenixKitManufacturing.Web.MachineFormLive, :comments}
+    end
+
     test "the Machines tab's regex match does not swallow the Operations subtree" do
       machines_tab =
         Enum.find(PhoenixKitManufacturing.admin_tabs(), &(&1.id == :manufacturing_machines))
@@ -207,6 +228,20 @@ defmodule PhoenixKitManufacturingTest do
       last = List.last(tabs)
       assert last.id == :manufacturing_defect_reason_edit
       assert last.path == "manufacturing/machines/defect-reasons/:uuid/edit"
+
+      # The machine card's hidden tab routes (also :uuid-wildcard, see
+      # Web.MachineFormLive's moduledoc "Tabs") must sit somewhere before
+      # the final tab too — same "wildcard routes last as a block" ordering
+      # convention as manufacturing_machine_edit itself.
+      for id <- [
+            :manufacturing_machine_operations,
+            :manufacturing_machine_files,
+            :manufacturing_machine_comments
+          ] do
+        index = Enum.find_index(tabs, &(&1.id == id))
+        assert index, "expected #{id} to be present in admin_tabs/0"
+        assert index < length(tabs) - 1
+      end
     end
   end
 
@@ -273,6 +308,13 @@ defmodule PhoenixKitManufacturingTest do
       uuid = "018f0000-0000-7000-8000-000000000000"
       assert String.ends_with?(Paths.machine_edit(uuid), "machines/#{uuid}/edit")
       assert String.ends_with?(Paths.type_edit(uuid), "types/#{uuid}/edit")
+    end
+
+    test "machine_operations/1, machine_files/1 and machine_comments/1 embed the uuid" do
+      uuid = "018f0000-0000-7000-8000-000000000000"
+      assert String.ends_with?(Paths.machine_operations(uuid), "machines/#{uuid}/operations")
+      assert String.ends_with?(Paths.machine_files(uuid), "machines/#{uuid}/files")
+      assert String.ends_with?(Paths.machine_comments(uuid), "machines/#{uuid}/comments")
     end
 
     test "operation_edit/1 embeds the uuid" do

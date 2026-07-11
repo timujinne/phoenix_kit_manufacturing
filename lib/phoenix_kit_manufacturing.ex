@@ -264,6 +264,52 @@ defmodule PhoenixKitManufacturing do
         visible: false,
         live_view: {PhoenixKitManufacturing.Web.MachineFormLive, :edit}
       },
+      # Machine card in-page tabs (Operations/Files/Comments) — hidden CRUD
+      # routes so each tab is directly linkable/bookmarkable, same
+      # `hidden_crud_tabs` convention as `PhoenixKitWarehouse`'s document
+      # forms. See `Web.MachineFormLive`'s moduledoc ("Tabs").
+      %Tab{
+        id: :manufacturing_machine_operations,
+        label: "Machine Operations",
+        gettext_backend: PhoenixKitManufacturing.Gettext,
+        gettext_domain: "default",
+        icon: "hero-clock",
+        path: "manufacturing/machines/:uuid/operations",
+        priority: 168,
+        level: :admin,
+        permission: module_key(),
+        parent: :manufacturing,
+        visible: false,
+        live_view: {PhoenixKitManufacturing.Web.MachineFormLive, :operations}
+      },
+      %Tab{
+        id: :manufacturing_machine_files,
+        label: "Machine Files",
+        gettext_backend: PhoenixKitManufacturing.Gettext,
+        gettext_domain: "default",
+        icon: "hero-paper-clip",
+        path: "manufacturing/machines/:uuid/files",
+        priority: 169,
+        level: :admin,
+        permission: module_key(),
+        parent: :manufacturing,
+        visible: false,
+        live_view: {PhoenixKitManufacturing.Web.MachineFormLive, :files}
+      },
+      %Tab{
+        id: :manufacturing_machine_comments,
+        label: "Machine Comments",
+        gettext_backend: PhoenixKitManufacturing.Gettext,
+        gettext_domain: "default",
+        icon: "hero-chat-bubble-left-right",
+        path: "manufacturing/machines/:uuid/comments",
+        priority: 170,
+        level: :admin,
+        permission: module_key(),
+        parent: :manufacturing,
+        visible: false,
+        live_view: {PhoenixKitManufacturing.Web.MachineFormLive, :comments}
+      },
       %Tab{
         id: :manufacturing_operation_edit,
         label: "Edit Operation",

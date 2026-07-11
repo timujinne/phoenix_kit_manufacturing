@@ -15,6 +15,9 @@ defmodule PhoenixKitManufacturing.Web.MachineFormLiveTest do
 
   defp new_path, do: "/en/admin/manufacturing/machines/new"
   defp edit_path(machine), do: "/en/admin/manufacturing/machines/#{machine.uuid}/edit"
+  defp operations_path(machine), do: "/en/admin/manufacturing/machines/#{machine.uuid}/operations"
+  defp files_path(machine), do: "/en/admin/manufacturing/machines/#{machine.uuid}/files"
+  defp comments_path(machine), do: "/en/admin/manufacturing/machines/#{machine.uuid}/comments"
 
   describe "statuses" do
     test "the status select offers the new repair/mothballed options", %{conn: conn} do
@@ -161,6 +164,78 @@ defmodule PhoenixKitManufacturing.Web.MachineFormLiveTest do
     end
   end
 
+  describe "Machine card tabs" do
+    test "a :new machine renders no tab bar (single-page General only)", %{conn: conn} do
+      conn = put_test_scope(conn, fake_scope())
+      {:ok, _view, html} = live(conn, new_path())
+
+      refute html =~ "tabs-border"
+    end
+
+    test "an :edit machine renders a tab bar with General active by default", %{conn: conn} do
+      {:ok, machine} = Machines.create_machine(%{name: "CNC-50"})
+      conn = put_test_scope(conn, fake_scope())
+      {:ok, view, html} = live(conn, edit_path(machine))
+
+      assert html =~ "tabs-border"
+      assert has_element?(view, "a.tab-active", "General")
+      assert has_element?(view, "a", "Files")
+    end
+
+    test "the Files tab patches to the Files route and renders the files card", %{conn: conn} do
+      {:ok, machine} = Machines.create_machine(%{name: "CNC-51"})
+      conn = put_test_scope(conn, fake_scope())
+      {:ok, view, _html} = live(conn, edit_path(machine))
+
+      html = render_patch(view, files_path(machine))
+
+      assert html =~ "Featured Image"
+      assert html =~ "Attached Files"
+      assert has_element?(view, "a.tab-active", "Files")
+      refute has_element?(view, "a.tab-active", "General")
+    end
+
+    test "the Comments tab link is absent and its route doesn't crash when comments are unavailable",
+         %{conn: conn} do
+      {:ok, machine} = Machines.create_machine(%{name: "CNC-52"})
+      conn = put_test_scope(conn, fake_scope())
+      {:ok, view, _html} = live(conn, edit_path(machine))
+
+      refute has_element?(view, "a", "Comments")
+
+      html = render_patch(view, comments_path(machine))
+      assert is_binary(html)
+    end
+
+    test "a non-existent machine's tab route flashes and redirects to the machines list", %{
+      conn: conn
+    } do
+      conn = put_test_scope(conn, fake_scope())
+      bad_uuid = Ecto.UUID.generate()
+
+      assert {:error, {:live_redirect, %{to: to}}} =
+               live(conn, "/en/admin/manufacturing/machines/#{bad_uuid}/operations")
+
+      assert to =~ "machines"
+    end
+
+    test "switching tabs preserves a pending (unsaved) type toggle", %{conn: conn} do
+      {:ok, type} = Machines.create_machine_type(%{name: "Lathe"})
+      {:ok, machine} = Machines.create_machine(%{name: "CNC-53"})
+
+      conn = put_test_scope(conn, fake_scope())
+      {:ok, view, _html} = live(conn, edit_path(machine))
+
+      render_click(view, "toggle_type", %{"uuid" => type.uuid})
+      assert has_element?(view, "label.badge-primary", "Lathe")
+
+      render_patch(view, files_path(machine))
+      render_patch(view, edit_path(machine))
+
+      assert has_element?(view, "label.badge-primary", "Lathe")
+    end
+  end
+
   describe "dynamic metadata fields" do
     setup do
       {:ok, type} =
@@ -261,15 +336,29 @@ defmodule PhoenixKitManufacturing.Web.MachineFormLiveTest do
     end
   end
 
-  describe "Operations section with no active operations" do
-    test "the section is hidden entirely", %{conn: conn} do
+  describe "Operations tab" do
+    test "never appears on a :new machine (single-page General only)", %{conn: conn} do
+      {:ok, _operation} =
+        Operations.create_operation(%{name: "Cutting", unit: "pcs", base_time_norm_seconds: 120})
+
       conn = put_test_scope(conn, fake_scope())
       {:ok, _view, html} = live(conn, new_path())
+
       refute html =~ "Toggle the operations this machine performs"
+    end
+
+    test "the tab link is hidden on an edit machine when there are no active operations", %{
+      conn: conn
+    } do
+      {:ok, machine} = Machines.create_machine(%{name: "CNC-29"})
+      conn = put_test_scope(conn, fake_scope())
+      {:ok, view, _html} = live(conn, edit_path(machine))
+
+      refute has_element?(view, "a", "Operations")
     end
   end
 
-  describe "Operations section" do
+  describe "Operations tab with an active operation" do
     setup do
       {:ok, operation} =
         Operations.create_operation(%{
@@ -278,26 +367,40 @@ defmodule PhoenixKitManufacturing.Web.MachineFormLiveTest do
           base_time_norm_seconds: 120
         })
 
-      %{operation: operation}
+      {:ok, machine} = Machines.create_machine(%{name: "CNC-Op"})
+
+      %{operation: operation, machine: machine}
+    end
+
+    test "the tab link is shown", %{conn: conn, machine: machine} do
+      conn = put_test_scope(conn, fake_scope())
+      {:ok, view, _html} = live(conn, edit_path(machine))
+
+      assert has_element?(view, "a", "Operations")
     end
 
     test "renders every active operation, unchecked, with no override input", %{
       conn: conn,
+      machine: machine,
       operation: operation
     } do
       conn = put_test_scope(conn, fake_scope())
-      {:ok, view, html} = live(conn, new_path())
+      {:ok, view, _html} = live(conn, edit_path(machine))
+      html = render_patch(view, operations_path(machine))
 
       assert html =~ "Cutting"
+      assert has_element?(view, "a.tab-active", "Operations")
       refute has_element?(view, "input[name='operation_override_#{operation.uuid}']")
     end
 
     test "toggle_operation shows the override input; toggling again hides it", %{
       conn: conn,
+      machine: machine,
       operation: operation
     } do
       conn = put_test_scope(conn, fake_scope())
-      {:ok, view, _html} = live(conn, new_path())
+      {:ok, view, _html} = live(conn, edit_path(machine))
+      render_patch(view, operations_path(machine))
 
       render_click(view, "toggle_operation", %{"uuid" => operation.uuid})
       assert has_element?(view, "input[name='operation_override_#{operation.uuid}']")
@@ -308,47 +411,51 @@ defmodule PhoenixKitManufacturing.Web.MachineFormLiveTest do
 
     test "linking an operation with no override persists a nil override on save", %{
       conn: conn,
+      machine: machine,
       operation: operation
     } do
       conn = put_test_scope(conn, fake_scope())
-      {:ok, view, _html} = live(conn, new_path())
+      {:ok, view, _html} = live(conn, edit_path(machine))
+      render_patch(view, operations_path(machine))
 
       render_click(view, "toggle_operation", %{"uuid" => operation.uuid})
 
       assert {:error, {:live_redirect, _}} =
                view
-               |> form("form", machine: %{name: "CNC-30", status: "active"})
+               |> form("form", machine: %{name: machine.name, status: "active"})
                |> render_submit()
 
-      assert [machine] = Machines.list_machines()
       assert Machines.linked_operation_overrides(machine.uuid) == %{operation.uuid => nil}
     end
 
     test "set_operation_override persists the override on save", %{
       conn: conn,
+      machine: machine,
       operation: operation
     } do
       conn = put_test_scope(conn, fake_scope())
-      {:ok, view, _html} = live(conn, new_path())
+      {:ok, view, _html} = live(conn, edit_path(machine))
+      render_patch(view, operations_path(machine))
 
       render_click(view, "toggle_operation", %{"uuid" => operation.uuid})
       render_click(view, "set_operation_override", %{"uuid" => operation.uuid, "value" => "45"})
 
       assert {:error, {:live_redirect, _}} =
                view
-               |> form("form", machine: %{name: "CNC-31", status: "active"})
+               |> form("form", machine: %{name: machine.name, status: "active"})
                |> render_submit()
 
-      assert [machine] = Machines.list_machines()
       assert Machines.linked_operation_overrides(machine.uuid) == %{operation.uuid => 45}
     end
 
     test "a blank override value clears back to nil (use the operation's base norm)", %{
       conn: conn,
+      machine: machine,
       operation: operation
     } do
       conn = put_test_scope(conn, fake_scope())
-      {:ok, view, _html} = live(conn, new_path())
+      {:ok, view, _html} = live(conn, edit_path(machine))
+      render_patch(view, operations_path(machine))
 
       render_click(view, "toggle_operation", %{"uuid" => operation.uuid})
       render_click(view, "set_operation_override", %{"uuid" => operation.uuid, "value" => "45"})
@@ -356,19 +463,20 @@ defmodule PhoenixKitManufacturing.Web.MachineFormLiveTest do
 
       assert {:error, {:live_redirect, _}} =
                view
-               |> form("form", machine: %{name: "CNC-32", status: "active"})
+               |> form("form", machine: %{name: machine.name, status: "active"})
                |> render_submit()
 
-      assert [machine] = Machines.list_machines()
       assert Machines.linked_operation_overrides(machine.uuid) == %{operation.uuid => nil}
     end
 
     test "a stray set_operation_override for an unlinked operation is a no-op", %{
       conn: conn,
+      machine: machine,
       operation: operation
     } do
       conn = put_test_scope(conn, fake_scope())
-      {:ok, view, _html} = live(conn, new_path())
+      {:ok, view, _html} = live(conn, edit_path(machine))
+      render_patch(view, operations_path(machine))
 
       render_click(view, "set_operation_override", %{"uuid" => operation.uuid, "value" => "45"})
 
@@ -378,13 +486,14 @@ defmodule PhoenixKitManufacturing.Web.MachineFormLiveTest do
 
     test "editing an existing machine preloads its linked operations and overrides", %{
       conn: conn,
+      machine: machine,
       operation: operation
     } do
-      {:ok, machine} = Machines.create_machine(%{name: "CNC-33"})
       {:ok, _} = Machines.sync_machine_operations(machine.uuid, %{operation.uuid => 60})
 
       conn = put_test_scope(conn, fake_scope())
       {:ok, view, _html} = live(conn, edit_path(machine))
+      render_patch(view, operations_path(machine))
 
       assert has_element?(view, "input[name='operation_override_#{operation.uuid}'][value='60']")
     end

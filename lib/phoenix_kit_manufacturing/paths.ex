@@ -29,6 +29,18 @@ defmodule PhoenixKitManufacturing.Paths do
   @spec machine_edit(String.t()) :: String.t()
   def machine_edit(uuid), do: Routes.path("#{@base}/machines/#{uuid}/edit")
 
+  @doc "Machine card, Operations tab (hidden CRUD route, edit form only)."
+  @spec machine_operations(String.t()) :: String.t()
+  def machine_operations(uuid), do: Routes.path("#{@base}/machines/#{uuid}/operations")
+
+  @doc "Machine card, Files tab (hidden CRUD route, edit form only)."
+  @spec machine_files(String.t()) :: String.t()
+  def machine_files(uuid), do: Routes.path("#{@base}/machines/#{uuid}/files")
+
+  @doc "Machine card, Comments tab (hidden CRUD route, edit form only)."
+  @spec machine_comments(String.t()) :: String.t()
+  def machine_comments(uuid), do: Routes.path("#{@base}/machines/#{uuid}/comments")
+
   # ── Machine types ───────────────────────────────────────────────────
 
   @doc "Machine types list."

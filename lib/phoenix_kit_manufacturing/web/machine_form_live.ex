@@ -14,6 +14,40 @@ defmodule PhoenixKitManufacturing.Web.MachineFormLive do
   `page_title`/`page_subtitle` render in the global admin header rather than
   an in-page one — same pattern as `PhoenixKitManufacturing.Web.MachinesLive`.
 
+  ## Tabs
+
+  Once a machine exists, its card is split into in-page tabs (`tabs
+  tabs-border`, `<.link patch={...}>`, same recipe as
+  `PhoenixKitWarehouse.Web.InternalOrderFormLive`): General (passport,
+  location, types, template fields), Operations, Files, Comments. Each tab
+  has its own hidden CRUD route (`:operations`/`:files`/`:comments` in
+  `PhoenixKitManufacturing.admin_tabs/0`, `visible: false` — same
+  `hidden_crud_tabs` convention as the warehouse) so it's directly
+  linkable/bookmarkable and survives a refresh, but never appears in the
+  sidebar. Switching tabs is a `patch`, not a `navigate` — the LiveView
+  process stays alive, so `handle_params/3` (not `mount/3`) does the actual
+  per-action loading. `mount/3` only sets up tab-independent scaffolding
+  (upload config, locale); `handle_params/3` loads the machine and, like
+  `InternalOrderFormLive`'s `load_order_into_socket/3`, only rebuilds the
+  *pending, unsaved* edit buffer (changeset, linked types/operations,
+  Attachments scope state) the first time a given uuid is seen — a bare tab
+  switch (`same_machine?` true) leaves it untouched, so toggling a type,
+  picking a featured image, or setting an operation override survives
+  navigating to another tab before hitting Save.
+
+  A `:new` machine has no uuid yet and stays a single, tab-less page
+  (General only, no tab bar) — Operations/Files/Comments only become
+  reachable once the machine has been saved once, mirroring how
+  `InternalOrderFormLive`'s `:new` never really renders past its own
+  auto-create redirect.
+
+  Save/Cancel live inside the shared `<.form>`, which wraps every tab
+  *except* Comments — General, Operations, and Files all hold state that's
+  still pending at save time (passport/types/template are changeset-backed;
+  operation overrides and the featured-image pick are separate socket
+  assigns synced at save, see below); Comments persists immediately through
+  its own component and has nothing to save.
+
   ## Location (soft link, not a form field)
 
   `location_uuid`/`space_uuid` are picked via
@@ -57,25 +91,31 @@ defmodule PhoenixKitManufacturing.Web.MachineFormLive do
   Wired through `PhoenixKitManufacturing.Attachments`, the same
   folder-scoped pattern used by `PhoenixKitLocations.Attachments` (see
   that module's doc for the general mechanics) and rendered with
-  `PhoenixKitManufacturing.Web.Components.FilesCard`. This form only
-  ever has one Attachments scope — the literal string `"machine"` — so
-  every Attachments event handler below hardcodes it rather than
-  reading `phx-value-scope` off the event params. A `:new` machine gets
-  a "pending" folder (no uuid yet); `save_machine/3` renames it to its
-  deterministic `machine-<uuid>` name right after the first save.
+  `PhoenixKitManufacturing.Web.Components.FilesCard` on the Files tab
+  (see "Tabs" above — only reachable once the machine has a uuid). This
+  form only ever has one Attachments scope — the literal string
+  `"machine"` — so every Attachments event handler below hardcodes it
+  rather than reading `phx-value-scope` off the event params.
+  `Attachments.maybe_rename_pending_folder_for/2` in `save_machine/3`'s
+  `:new` clause is a leftover safety net from before the Files tab
+  existed (a `:new` machine could upload before its first save, landing
+  in a "pending" folder renamed post-save) — now a no-op in practice
+  since `:new` never renders the Files tab, but left in place rather than
+  torn out, since it's harmless and the fallback stays correct if that
+  ever changes.
 
   ## Comments
 
-  Only rendered for `:edit` (a `:new` machine has no `uuid` to attach
-  comments to yet) and only when `PhoenixKitManufacturing.Comments.available?/0`
-  is true. Like the Location card, this is rendered in its own card
-  **outside** the main `<.form>` — `CommentsComponent` renders its own
-  internal `<.form phx-target={@myself}>` for the composer, and nesting
-  that inside this form's `<.form>` would produce invalid nested `<form>`
-  elements. `use PhoenixKitComments.Embed` (below) forwards the rich-text
-  composer's `{:leaf_changed, ...}` messages to the component — without
-  it, posting a comment silently no-ops (see `PhoenixKitComments.Embed`
-  moduledoc).
+  Only rendered on the Comments tab (`@active_tab == :comments`, which —
+  see "Tabs" above — only exists once the machine has a `uuid`) and only
+  when `PhoenixKitManufacturing.Comments.available?/0` is true. Like the
+  Location card, this is rendered in its own card **outside** the main
+  `<.form>` — `CommentsComponent` renders its own internal `<.form
+  phx-target={@myself}>` for the composer, and nesting that inside this
+  form's `<.form>` would produce invalid nested `<form>` elements. `use
+  PhoenixKitComments.Embed` (below) forwards the rich-text composer's
+  `{:leaf_changed, ...}` messages to the component — without it, posting
+  a comment silently no-ops (see `PhoenixKitComments.Embed` moduledoc).
   """
 
   use Phoenix.LiveView
@@ -109,55 +149,115 @@ defmodule PhoenixKitManufacturing.Web.MachineFormLive do
     {:cont, put_in(socket.private[:live_layout], {PhoenixKitWeb.Layouts, :app})}
   end
 
+  # `mount/3` only sets up tab-independent scaffolding — upload config and
+  # locale don't vary by which tab/action is active, so they belong here
+  # rather than being redone on every `handle_params/3` (which runs on
+  # every tab patch too, see the moduledoc's "Tabs" section). `machine`
+  # starts `nil`; `handle_params/3` always runs before the first render
+  # (for both disconnected and connected mounts) and populates it.
   @impl true
-  def mount(params, _session, socket) do
-    action = socket.assigns.live_action
+  def mount(_params, _session, socket) do
     locale = socket.assigns[:current_locale] || Gettext.get_locale()
 
-    case load_machine(action, params) do
-      {:not_found, uuid} ->
+    {:ok,
+     socket
+     |> assign(locale: locale, machine: nil, active_tab: :general)
+     |> Attachments.init()
+     |> Attachments.allow_attachment_upload()}
+  end
+
+  @impl true
+  def handle_params(params, _uri, socket) do
+    case socket.assigns.live_action do
+      :new -> {:noreply, load_new(socket)}
+      action -> handle_params_existing(socket, params["uuid"], action)
+    end
+  end
+
+  defp load_new(socket) do
+    machine = %Machine{}
+
+    socket
+    |> assign(
+      page_title: page_title(:new, machine),
+      action: :new,
+      active_tab: :general,
+      machine: machine,
+      all_types: safe_list_types(),
+      linked_type_uuids: MapSet.new(),
+      merged_template: [],
+      all_operations: [],
+      operation_overrides: %{},
+      location_uuid: nil,
+      space_uuid: nil,
+      show_place_picker: true
+    )
+    |> assign_form(Machines.change_machine(machine))
+    |> Attachments.mount(scope: "machine", resource: machine)
+  end
+
+  defp handle_params_existing(socket, uuid, live_action) do
+    case Machines.get_machine(uuid) do
+      nil ->
         Logger.info("Machine not found for edit: #{uuid}")
 
-        {:ok,
+        {:noreply,
          socket
          |> put_flash(:error, Errors.message(:machine_not_found))
          |> push_navigate(to: Paths.machines())}
 
-      {machine, changeset, linked_type_uuids} ->
-        {:ok,
-         socket
-         |> assign(
-           page_title: page_title(action, machine),
-           action: action,
-           machine: machine,
-           all_types: safe_list_types(),
-           linked_type_uuids: MapSet.new(linked_type_uuids),
-           merged_template: safe_merged_template(linked_type_uuids),
-           all_operations: safe_list_operations(),
-           operation_overrides: safe_operation_overrides(action, machine),
-           locale: locale,
-           location_uuid: machine.location_uuid,
-           space_uuid: machine.space_uuid,
-           show_place_picker: is_nil(machine.location_uuid) and is_nil(machine.space_uuid)
-         )
-         |> assign_form(changeset)
-         |> Attachments.init()
-         |> Attachments.allow_attachment_upload()
-         |> Attachments.mount(scope: "machine", resource: machine)}
+      machine ->
+        {:noreply, load_existing(socket, machine, live_action)}
     end
   end
 
-  defp load_machine(:new, _params) do
-    m = %Machine{}
-    {m, Machines.change_machine(m), []}
+  # Refreshes the machine + tab on every landing/patch (cheap, read-only,
+  # always safe), but only rebuilds the *pending, unsaved* edit buffer
+  # (changeset, linked types/operations, Attachments scope state — see
+  # `assign_edit_buffer/2`) the first time this uuid is seen. A same-machine
+  # tab switch skips it, so in-progress edits survive navigating to another
+  # tab before hitting Save — mirrors
+  # `InternalOrderFormLive.load_order_into_socket/3`'s `same_order?` guard.
+  defp load_existing(socket, machine, live_action) do
+    uuid = machine.uuid
+    same_machine? = match?(%{uuid: ^uuid}, socket.assigns[:machine])
+
+    socket =
+      assign(socket,
+        machine: machine,
+        action: :edit,
+        active_tab: active_tab(live_action),
+        page_title: page_title(:edit, machine)
+      )
+
+    if same_machine?, do: socket, else: assign_edit_buffer(socket, machine)
   end
 
-  defp load_machine(:edit, params) do
-    case Machines.get_machine(params["uuid"]) do
-      nil -> {:not_found, params["uuid"]}
-      m -> {m, Machines.change_machine(m), safe_linked_type_uuids(m)}
-    end
+  defp assign_edit_buffer(socket, machine) do
+    linked_type_uuids = safe_linked_type_uuids(machine)
+
+    socket
+    |> assign(
+      all_types: safe_list_types(),
+      linked_type_uuids: MapSet.new(linked_type_uuids),
+      merged_template: safe_merged_template(linked_type_uuids),
+      all_operations: safe_list_operations(),
+      operation_overrides: safe_operation_overrides(machine),
+      location_uuid: machine.location_uuid,
+      space_uuid: machine.space_uuid,
+      show_place_picker: is_nil(machine.location_uuid) and is_nil(machine.space_uuid)
+    )
+    |> assign_form(Machines.change_machine(machine))
+    |> Attachments.mount(scope: "machine", resource: machine)
   end
+
+  # live_action -> tab id. `:edit` (General's own route) and any other
+  # unrecognized action fall back to `:general` — only `:new` (handled
+  # separately by `load_new/1`, never routed through here) has no tab bar.
+  defp active_tab(:operations), do: :operations
+  defp active_tab(:files), do: :files
+  defp active_tab(:comments), do: :comments
+  defp active_tab(_), do: :general
 
   defp safe_linked_type_uuids(machine) do
     Machines.linked_type_uuids(machine.uuid)
@@ -191,12 +291,10 @@ defmodule PhoenixKitManufacturing.Web.MachineFormLive do
       []
   end
 
-  # A :new machine has no uuid yet, so there's nothing to look up — starts
-  # with no linked operations, same as `load_machine(:new, _)`'s `[]` of
-  # linked type uuids.
-  defp safe_operation_overrides(:new, _machine), do: %{}
-
-  defp safe_operation_overrides(:edit, machine) do
+  # Only ever called from `assign_edit_buffer/2` — a `:new` machine has no
+  # uuid yet, so `load_new/1` hardcodes `%{}` directly rather than routing
+  # through here.
+  defp safe_operation_overrides(machine) do
     Machines.linked_operation_overrides(machine.uuid)
   rescue
     error ->
@@ -527,13 +625,50 @@ defmodule PhoenixKitManufacturing.Web.MachineFormLive do
         />
 
         <div class="max-w-none mx-auto w-full flex flex-col gap-6">
+          <%!-- Tab navigation — only once the machine exists (has a uuid); a
+               :new machine is a single-page General form with no tab bar at
+               all yet (see the moduledoc's "Tabs" section). Operations is
+               only offered when the directory has active operations to
+               show — same "hide if empty" rule the section itself applied
+               inline before the move. --%>
+          <div :if={@machine.uuid} class="tabs tabs-border">
+            <.link
+              patch={Paths.machine_edit(@machine.uuid)}
+              class={["tab", @active_tab == :general && "tab-active"]}
+            >
+              {gettext("General")}
+            </.link>
+            <.link
+              :if={@all_operations != []}
+              patch={Paths.machine_operations(@machine.uuid)}
+              class={["tab", @active_tab == :operations && "tab-active"]}
+            >
+              {gettext("Operations")}
+            </.link>
+            <.link
+              patch={Paths.machine_files(@machine.uuid)}
+              class={["tab", @active_tab == :files && "tab-active"]}
+            >
+              {gettext("Files")}
+            </.link>
+            <.link
+              :if={Comments.available?()}
+              patch={Paths.machine_comments(@machine.uuid)}
+              class={["tab", @active_tab == :comments && "tab-active"]}
+            >
+              {gettext("Comments")}
+            </.link>
+          </div>
+
           <%!-- Location — deliberately OUTSIDE the <.form> below. PlacePicker
                is a LiveComponent with its own search/tree inputs; nesting it
                inside <.form phx-change="validate"> would risk its native
                input/change events bubbling into the form's phx-change
                binding. The picked uuids live in socket assigns (see
-               moduledoc) and never need to be real <form> fields. --%>
+               moduledoc) and never need to be real <form> fields. General
+               tab only, like the rest of the passport. --%>
           <.location_card
+            :if={@active_tab == :general}
             machine={@machine}
             location_uuid={@location_uuid}
             space_uuid={@space_uuid}
@@ -541,176 +676,180 @@ defmodule PhoenixKitManufacturing.Web.MachineFormLive do
             show_place_picker={@show_place_picker}
           />
 
-          <.form for={@form} phx-change="validate" phx-submit="save">
+          <%!-- Wraps every tab except Comments — General/Operations/Files all
+               hold state that's still pending at save time (see moduledoc),
+               so Save/Cancel live in one persistent footer below rather
+               than being duplicated per tab. --%>
+          <.form :if={@active_tab != :comments} for={@form} phx-change="validate" phx-submit="save">
             <div class="card bg-base-100 shadow-lg">
               <div class="card-body flex flex-col gap-5">
-                <.input
-                  field={@form[:name]}
-                  type="text"
-                  label={gettext("Name")}
-                  placeholder={gettext("e.g., CNC Mill #3")}
-                  required
-                />
-
-                <%!-- Passport: identifying/spec fields. One grid (not several
-                     paired 2-col ones) so the extra width freed up by the
-                     form no longer being capped at max-w-3xl gets used —
-                     up to 3 columns on large screens instead of fields
-                     stretching edge-to-edge in a 2-col row. --%>
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <%= if @active_tab == :general do %>
                   <.input
-                    field={@form[:code]}
+                    field={@form[:name]}
                     type="text"
-                    label={gettext("Code")}
-                    placeholder={gettext("Inventory number, e.g. M-001")}
+                    label={gettext("Name")}
+                    placeholder={gettext("e.g., CNC Mill #3")}
+                    required
                   />
-                  <.input
-                    field={@form[:manufacturer]}
-                    type="text"
-                    label={gettext("Manufacturer")}
-                  />
-                  <.input field={@form[:model]} type="text" label={gettext("Model")} />
-                  <.input
-                    field={@form[:manufacture_year]}
-                    type="number"
-                    label={gettext("Manufacture year")}
-                  />
-                  <.input
-                    field={@form[:serial_number]}
-                    type="text"
-                    label={gettext("Serial number")}
-                  />
-                  <.input
-                    :if={@action == :edit and @machine.location_note not in [nil, ""]}
-                    field={@form[:location_note]}
-                    type="text"
-                    label={gettext("Location (legacy note)")}
-                    placeholder={gettext("Workshop / room / warehouse")}
-                  />
-                  <.input
-                    field={@form[:commissioned_on]}
-                    type="date"
-                    label={gettext("Commissioned on")}
-                  />
-                  <.input
-                    field={@form[:warranty_until]}
-                    type="date"
-                    label={gettext("Warranty until")}
-                  />
-                  <.input field={@form[:to_last_on]} type="date" label={gettext("Last maintenance")} />
-                  <.input
-                    field={@form[:to_interval_days]}
-                    type="number"
-                    label={gettext("Maintenance interval (days)")}
-                  />
-                  <.input
-                    field={@form[:to_next_on]}
-                    type="date"
-                    label={gettext("Next maintenance due")}
-                  />
-                </div>
 
-                <.textarea
-                  field={@form[:description]}
-                  label={gettext("Description")}
-                  rows="3"
-                  placeholder={gettext("Notes about this machine...")}
-                />
-
-                <.textarea
-                  field={@form[:notes]}
-                  label={gettext("Internal notes")}
-                  rows="3"
-                  placeholder={gettext("Notes only visible to admins...")}
-                />
-
-                <.select
-                  field={@form[:status]}
-                  label={gettext("Status")}
-                  options={status_options()}
-                  class="transition-colors focus-within:select-primary"
-                />
-
-                <div :if={@all_types != []} class="flex flex-col gap-3">
-                  <div class="divider my-0"></div>
-
-                  <div class="flex items-center gap-2">
-                    <.icon name="hero-tag" class="w-5 h-5 text-base-content/70" />
-                    <span class="font-medium">{gettext("Machine Types")}</span>
+                  <%!-- Passport: identifying/spec fields. One grid (not several
+                       paired 2-col ones) so the extra width freed up by the
+                       form no longer being capped at max-w-3xl gets used —
+                       up to 3 columns on large screens instead of fields
+                       stretching edge-to-edge in a 2-col row. --%>
+                  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <.input
+                      field={@form[:code]}
+                      type="text"
+                      label={gettext("Code")}
+                      placeholder={gettext("Inventory number, e.g. M-001")}
+                    />
+                    <.input
+                      field={@form[:manufacturer]}
+                      type="text"
+                      label={gettext("Manufacturer")}
+                    />
+                    <.input field={@form[:model]} type="text" label={gettext("Model")} />
+                    <.input
+                      field={@form[:manufacture_year]}
+                      type="number"
+                      label={gettext("Manufacture year")}
+                    />
+                    <.input
+                      field={@form[:serial_number]}
+                      type="text"
+                      label={gettext("Serial number")}
+                    />
+                    <.input
+                      :if={@action == :edit and @machine.location_note not in [nil, ""]}
+                      field={@form[:location_note]}
+                      type="text"
+                      label={gettext("Location (legacy note)")}
+                      placeholder={gettext("Workshop / room / warehouse")}
+                    />
+                    <.input
+                      field={@form[:commissioned_on]}
+                      type="date"
+                      label={gettext("Commissioned on")}
+                    />
+                    <.input
+                      field={@form[:warranty_until]}
+                      type="date"
+                      label={gettext("Warranty until")}
+                    />
+                    <.input field={@form[:to_last_on]} type="date" label={gettext("Last maintenance")} />
+                    <.input
+                      field={@form[:to_interval_days]}
+                      type="number"
+                      label={gettext("Maintenance interval (days)")}
+                    />
+                    <.input
+                      field={@form[:to_next_on]}
+                      type="date"
+                      label={gettext("Next maintenance due")}
+                    />
                   </div>
-                  <p class="text-sm text-base-content/50 -mt-2">
-                    {gettext("Click to toggle. A machine can have multiple types.")}
-                  </p>
 
-                  <div class="flex flex-wrap gap-2">
-                    <label
-                      :for={t <- @all_types}
-                      class={[
-                        "badge badge-lg cursor-pointer gap-1.5 select-none transition-colors",
-                        if(MapSet.member?(@linked_type_uuids, t.uuid),
-                          do: "badge-primary",
-                          else: "badge-ghost hover:badge-outline"
-                        )
-                      ]}
-                      phx-click="toggle_type"
-                      phx-value-uuid={t.uuid}
-                    >
-                      <.icon
-                        :if={MapSet.member?(@linked_type_uuids, t.uuid)}
-                        name="hero-check"
-                        class="h-3.5 w-3.5"
-                      />
-                      {t.name}
-                    </label>
-                  </div>
-                </div>
-
-                <div :if={@merged_template != []} class="flex flex-col gap-3">
-                  <div class="divider my-0"></div>
-
-                  <div class="flex items-center gap-2">
-                    <.icon name="hero-clipboard-document-list" class="w-5 h-5 text-base-content/70" />
-                    <span class="font-medium">{gettext("Specifications")}</span>
-                  </div>
-                  <p class="text-sm text-base-content/50 -mt-2">
-                    {gettext("Fields defined by the selected machine types.")}
-                  </p>
-
-                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <.dynamic_metadata_field :for={row <- @merged_template} row={row} machine={@machine} />
-                  </div>
-                </div>
-
-                <div :if={@all_operations != []} class="flex flex-col gap-3">
-                  <div class="divider my-0"></div>
-
-                  <div class="flex items-center gap-2">
-                    <.icon name="hero-clock" class="w-5 h-5 text-base-content/70" />
-                    <span class="font-medium">{gettext("Operations")}</span>
-                  </div>
-                  <p class="text-sm text-base-content/50 -mt-2">
-                    {gettext(
-                      "Toggle the operations this machine performs. Override the time norm for this machine, or leave it blank to use the operation's base norm."
-                    )}
-                  </p>
-
-                  <.operation_row
-                    :for={operation <- @all_operations}
-                    operation={operation}
-                    enabled?={Map.has_key?(@operation_overrides, operation.uuid)}
-                    override={Map.get(@operation_overrides, operation.uuid)}
+                  <.textarea
+                    field={@form[:description]}
+                    label={gettext("Description")}
+                    rows="3"
+                    placeholder={gettext("Notes about this machine...")}
                   />
-                </div>
 
-                <div class="flex flex-col gap-4">
-                  <div class="divider my-0"></div>
+                  <.textarea
+                    field={@form[:notes]}
+                    label={gettext("Internal notes")}
+                    rows="3"
+                    placeholder={gettext("Notes only visible to admins...")}
+                  />
 
+                  <.select
+                    field={@form[:status]}
+                    label={gettext("Status")}
+                    options={status_options()}
+                    class="transition-colors focus-within:select-primary"
+                  />
+
+                  <div :if={@all_types != []} class="flex flex-col gap-3">
+                    <div class="divider my-0"></div>
+
+                    <div class="flex items-center gap-2">
+                      <.icon name="hero-tag" class="w-5 h-5 text-base-content/70" />
+                      <span class="font-medium">{gettext("Machine Types")}</span>
+                    </div>
+                    <p class="text-sm text-base-content/50 -mt-2">
+                      {gettext("Click to toggle. A machine can have multiple types.")}
+                    </p>
+
+                    <div class="flex flex-wrap gap-2">
+                      <label
+                        :for={t <- @all_types}
+                        class={[
+                          "badge badge-lg cursor-pointer gap-1.5 select-none transition-colors",
+                          if(MapSet.member?(@linked_type_uuids, t.uuid),
+                            do: "badge-primary",
+                            else: "badge-ghost hover:badge-outline"
+                          )
+                        ]}
+                        phx-click="toggle_type"
+                        phx-value-uuid={t.uuid}
+                      >
+                        <.icon
+                          :if={MapSet.member?(@linked_type_uuids, t.uuid)}
+                          name="hero-check"
+                          class="h-3.5 w-3.5"
+                        />
+                        {t.name}
+                      </label>
+                    </div>
+                  </div>
+
+                  <div :if={@merged_template != []} class="flex flex-col gap-3">
+                    <div class="divider my-0"></div>
+
+                    <div class="flex items-center gap-2">
+                      <.icon name="hero-clipboard-document-list" class="w-5 h-5 text-base-content/70" />
+                      <span class="font-medium">{gettext("Specifications")}</span>
+                    </div>
+                    <p class="text-sm text-base-content/50 -mt-2">
+                      {gettext("Fields defined by the selected machine types.")}
+                    </p>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <.dynamic_metadata_field :for={row <- @merged_template} row={row} machine={@machine} />
+                    </div>
+                  </div>
+                <% end %>
+
+                <%= if @active_tab == :operations do %>
+                  <div :if={@all_operations != []} class="flex flex-col gap-3">
+                    <div class="flex items-center gap-2">
+                      <.icon name="hero-clock" class="w-5 h-5 text-base-content/70" />
+                      <span class="font-medium">{gettext("Operations")}</span>
+                    </div>
+                    <p class="text-sm text-base-content/50 -mt-2">
+                      {gettext(
+                        "Toggle the operations this machine performs. Override the time norm for this machine, or leave it blank to use the operation's base norm."
+                      )}
+                    </p>
+
+                    <.operation_row
+                      :for={operation <- @all_operations}
+                      operation={operation}
+                      enabled?={Map.has_key?(@operation_overrides, operation.uuid)}
+                      override={Map.get(@operation_overrides, operation.uuid)}
+                    />
+                  </div>
+                <% end %>
+
+                <%= if @active_tab == :files do %>
                   <.files_card_body
                     scope="machine"
                     state={Attachments.state(%{assigns: assigns}, "machine")}
                     uploads={@uploads}
                   />
-                </div>
+                <% end %>
 
                 <div class="divider my-0"></div>
 
@@ -733,13 +872,14 @@ defmodule PhoenixKitManufacturing.Web.MachineFormLive do
             </div>
           </.form>
 
-          <%!-- Comments — deliberately OUTSIDE the <.form> above, same reason
-               as the Location card: CommentsComponent renders its own
-               internal <.form phx-target={@myself}> for the composer, and
-               nesting a <form> inside a <form> is invalid HTML. Only shown
-               for :edit (a :new machine has no uuid yet) and only when the
-               comments module is installed and enabled. --%>
-          <div :if={Comments.available?() and @action == :edit} class="card bg-base-100 shadow-lg">
+          <%!-- Comments — its own tab, deliberately OUTSIDE the <.form> above,
+               same reason as the Location card: CommentsComponent renders
+               its own internal <.form phx-target={@myself}> for the
+               composer, and nesting a <form> inside a <form> is invalid
+               HTML. Only reachable once the machine has a uuid (see the tab
+               bar's :if above) and only when the comments module is
+               installed and enabled. --%>
+          <div :if={@active_tab == :comments and Comments.available?()} class="card bg-base-100 shadow-lg">
             <div class="card-body">
               <CommentsPanel.panel
                 kind={:machine}

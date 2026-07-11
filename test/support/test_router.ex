@@ -42,6 +42,9 @@ defmodule PhoenixKitManufacturing.Test.Router do
       live("/machines/defect-reasons/new", DefectReasonFormLive, :new)
       live("/machines/defect-reasons/:uuid/edit", DefectReasonFormLive, :edit)
       live("/machines/:uuid/edit", MachineFormLive, :edit)
+      live("/machines/:uuid/operations", MachineFormLive, :operations)
+      live("/machines/:uuid/files", MachineFormLive, :files)
+      live("/machines/:uuid/comments", MachineFormLive, :comments)
     end
   end
 end
