@@ -150,4 +150,77 @@ defmodule PhoenixKitManufacturing.Web.MachinesLiveTest do
       assert Machines.count_machines() == 0
     end
   end
+
+  # Web.ColumnManagement's event handlers (add_column, toggle_filter,
+  # update_table_columns, set_filter_value, clear_all_filters) have no
+  # dedicated test file of their own — covered here end-to-end through
+  # MachinesLive, the only current consumer.
+  describe "column customization and filters" do
+    test "filtering by status narrows the list to matching machines", %{conn: conn} do
+      {:ok, _} = Machines.create_machine(%{name: "Healthy Mill", status: "active"})
+      {:ok, _} = Machines.create_machine(%{name: "Broken Press", status: "repair"})
+
+      conn = put_test_scope(conn, fake_scope())
+      {:ok, view, _html} = live(conn, "/en/admin/manufacturing/machines")
+
+      # "status" is a default column, so toggle_filter works without an
+      # add_column step first.
+      render_click(view, "show_column_modal", %{})
+      render_click(view, "toggle_filter", %{"column_id" => "status"})
+      render_submit(view, "update_table_columns", %{})
+
+      html =
+        render_change(view, "set_filter_value", %{"column_id" => "status", "value" => "repair"})
+
+      assert html =~ "Broken Press"
+      refute html =~ "Healthy Mill"
+    end
+
+    test "clear_all_filters restores the full list", %{conn: conn} do
+      {:ok, _} = Machines.create_machine(%{name: "Healthy Mill", status: "active"})
+      {:ok, _} = Machines.create_machine(%{name: "Broken Press", status: "repair"})
+
+      conn = put_test_scope(conn, fake_scope())
+      {:ok, view, _html} = live(conn, "/en/admin/manufacturing/machines")
+
+      render_click(view, "show_column_modal", %{})
+      render_click(view, "toggle_filter", %{"column_id" => "status"})
+      render_submit(view, "update_table_columns", %{})
+      render_change(view, "set_filter_value", %{"column_id" => "status", "value" => "repair"})
+
+      html = render_click(view, "clear_all_filters", %{})
+
+      assert html =~ "Broken Press"
+      assert html =~ "Healthy Mill"
+    end
+
+    test "adding a column via the modal persists across a reload for the same user", %{
+      conn: conn
+    } do
+      scope = fake_scope()
+      {:ok, _} = Machines.create_machine(%{name: "CNC-01", manufacturer: "Haas"})
+
+      conn1 = put_test_scope(conn, scope)
+      {:ok, view, html} = live(conn1, "/en/admin/manufacturing/machines")
+      refute html =~ "Manufacturer"
+
+      render_click(view, "show_column_modal", %{})
+      render_click(view, "add_column", %{"column_id" => "manufacturer"})
+
+      html =
+        render_submit(view, "update_table_columns", %{
+          "column_order" => "name,code,status,location,types,manufacturer"
+        })
+
+      assert html =~ "Manufacturer"
+
+      conn2 =
+        Phoenix.ConnTest.build_conn()
+        |> Plug.Test.init_test_session(%{})
+        |> put_test_scope(scope)
+
+      {:ok, _view2, html2} = live(conn2, "/en/admin/manufacturing/machines")
+      assert html2 =~ "Manufacturer"
+    end
+  end
 end
