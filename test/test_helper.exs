@@ -95,6 +95,28 @@ repo_available =
       # impossible by construction — no hand-rolled migration shim.
       PhoenixKit.Migration.ensure_current(PhoenixKitManufacturing.Test.Repo, log: false)
 
+      # `Migrations.Machines` V5's blueprint-entity provisioning requires a
+      # real `created_by_uuid` (`resolve_creator_uuid!/0` raises without
+      # one) — a freshly `createdb`'d test database has zero PhoenixKit
+      # users at this point, so seed exactly one before the module
+      # migration below runs. Guarded on `get_first_user_uuid/0` so this
+      # stays a no-op on the second and later `mix test` run against the
+      # same (not `test.reset`'d) database. Inserted directly (not via
+      # `Auth.register_user/2`) — no rate limiter or mailer is running yet
+      # this early in boot, and none of that ceremony matters for a row
+      # whose only purpose is to exist as a creator reference.
+      if is_nil(PhoenixKit.Users.Auth.get_first_user_uuid()) do
+        %PhoenixKit.Users.Auth.User{}
+        |> Ecto.Changeset.cast(
+          %{
+            email: "test-helper-fixture@phoenix-kit-manufacturing.test",
+            hashed_password: "not-a-real-hash"
+          },
+          [:email, :hashed_password]
+        )
+        |> PhoenixKitManufacturing.Test.Repo.insert!()
+      end
+
       Ecto.Migrator.up(
         PhoenixKitManufacturing.Test.Repo,
         System.os_time(:microsecond),
