@@ -142,7 +142,7 @@ defmodule PhoenixKitManufacturing.Web.MachinesLive do
   end
 
   defp tab_title(:index), do: gettext("Machines")
-  defp tab_title(:types), do: gettext("Machine Types")
+  defp tab_title(:types), do: gettext("Types")
   defp tab_title(:operations), do: gettext("Operations")
   defp tab_title(:defect_reasons), do: gettext("Defect Reasons")
 
@@ -547,8 +547,10 @@ defmodule PhoenixKitManufacturing.Web.MachinesLive do
                     class="flex items-center gap-2 text-xs text-base-content/60"
                   >
                     <span>
-                      {gettext("%{count} filters active",
-                        count: count_active_filters(@active_filters, @filter_values)
+                      {ngettext(
+                        "%{count} filter active",
+                        "%{count} filters active",
+                        count_active_filters(@active_filters, @filter_values)
                       )}
                     </span>
                     <button type="button" phx-click="clear_all_filters" class="btn btn-ghost btn-xs">
