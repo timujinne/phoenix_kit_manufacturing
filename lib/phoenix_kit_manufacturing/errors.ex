@@ -25,13 +25,7 @@ defmodule PhoenixKitManufacturing.Errors do
   @doc "Translates an error reason into a user-facing string via gettext."
   @spec message(term()) :: String.t()
   def message(:machine_not_found), do: gettext("Machine not found.")
-  def message(:machine_type_not_found), do: gettext("Machine type not found.")
-  def message(:operation_not_found), do: gettext("Operation not found.")
-  def message(:defect_reason_not_found), do: gettext("Defect reason not found.")
   def message(:machine_delete_failed), do: gettext("Failed to delete machine.")
-  def message(:machine_type_delete_failed), do: gettext("Failed to delete machine type.")
-  def message(:operation_delete_failed), do: gettext("Failed to delete operation.")
-  def message(:defect_reason_delete_failed), do: gettext("Failed to delete defect reason.")
 
   def message(:type_assignment_failed),
     do: gettext("Saved but failed to update type assignments.")

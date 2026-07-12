@@ -5,6 +5,13 @@ defmodule PhoenixKitManufacturing.Paths do
   All paths go through `PhoenixKit.Utils.Routes.path/1` for prefix/locale
   handling. Never hardcode `"/admin/manufacturing"` in a LiveView or template
   — use these helpers instead so URL prefix changes only need updating here.
+
+  `types/0`, `operations/0`, and `defect_reasons/0` are the exception to the
+  `@base`-prefixed rule above: as of the entities migration
+  (`dev_docs/ENTITIES_MIGRATION_SPEC.md`), `machine_type`/`operation`/
+  `defect_reason` CRUD lives on the generic `phoenix_kit_entities` admin UI,
+  not on a route owned by this module — so those three helpers point at
+  `/admin/entities/:slug/data` instead of `/admin/manufacturing/...`.
   """
 
   alias PhoenixKit.Utils.Routes
@@ -43,43 +50,19 @@ defmodule PhoenixKitManufacturing.Paths do
 
   # ── Machine types ───────────────────────────────────────────────────
 
-  @doc "Machine types list."
+  @doc "Machine types list — the entities admin UI for the `machine_type` entity."
   @spec types() :: String.t()
-  def types, do: Routes.path("#{@base}/machines/types")
-
-  @doc "New machine type form."
-  @spec type_new() :: String.t()
-  def type_new, do: Routes.path("#{@base}/machines/types/new")
-
-  @doc "Edit machine type form."
-  @spec type_edit(String.t()) :: String.t()
-  def type_edit(uuid), do: Routes.path("#{@base}/machines/types/#{uuid}/edit")
+  def types, do: Routes.path("/admin/entities/machine_type/data")
 
   # ── Operations ──────────────────────────────────────────────────────
 
-  @doc "Operations list."
+  @doc "Operations list — the entities admin UI for the `operation` entity."
   @spec operations() :: String.t()
-  def operations, do: Routes.path("#{@base}/machines/operations")
-
-  @doc "New operation form."
-  @spec operation_new() :: String.t()
-  def operation_new, do: Routes.path("#{@base}/machines/operations/new")
-
-  @doc "Edit operation form."
-  @spec operation_edit(String.t()) :: String.t()
-  def operation_edit(uuid), do: Routes.path("#{@base}/machines/operations/#{uuid}/edit")
+  def operations, do: Routes.path("/admin/entities/operation/data")
 
   # ── Defect reasons ──────────────────────────────────────────────────
 
-  @doc "Defect reasons list."
+  @doc "Defect reasons list — the entities admin UI for the `defect_reason` entity."
   @spec defect_reasons() :: String.t()
-  def defect_reasons, do: Routes.path("#{@base}/machines/defect-reasons")
-
-  @doc "New defect reason form."
-  @spec defect_reason_new() :: String.t()
-  def defect_reason_new, do: Routes.path("#{@base}/machines/defect-reasons/new")
-
-  @doc "Edit defect reason form."
-  @spec defect_reason_edit(String.t()) :: String.t()
-  def defect_reason_edit(uuid), do: Routes.path("#{@base}/machines/defect-reasons/#{uuid}/edit")
+  def defect_reasons, do: Routes.path("/admin/entities/defect_reason/data")
 end

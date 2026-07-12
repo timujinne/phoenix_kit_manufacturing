@@ -310,20 +310,19 @@ defmodule PhoenixKitManufacturingTest do
       assert String.contains?(Paths.index(), "manufacturing")
     end
 
-    test "machines/0 and types/0 return the expected subpaths" do
+    test "machines/0 returns the expected subpath" do
       assert String.ends_with?(Paths.machines(), "manufacturing/machines")
-      assert String.ends_with?(Paths.types(), "manufacturing/machines/types")
     end
 
-    test "operations/0 and operation_new/0 return the expected subpaths" do
-      assert String.ends_with?(Paths.operations(), "manufacturing/machines/operations")
-      assert String.ends_with?(Paths.operation_new(), "manufacturing/machines/operations/new")
+    test "types/0, operations/0 and defect_reasons/0 point at the entities admin UI" do
+      assert String.ends_with?(Paths.types(), "entities/machine_type/data")
+      assert String.ends_with?(Paths.operations(), "entities/operation/data")
+      assert String.ends_with?(Paths.defect_reasons(), "entities/defect_reason/data")
     end
 
-    test "machine_edit/1 and type_edit/1 embed the uuid" do
+    test "machine_edit/1 embeds the uuid" do
       uuid = "018f0000-0000-7000-8000-000000000000"
       assert String.ends_with?(Paths.machine_edit(uuid), "machines/#{uuid}/edit")
-      assert String.ends_with?(Paths.type_edit(uuid), "types/#{uuid}/edit")
     end
 
     test "machine_operations/1, machine_files/1 and machine_comments/1 embed the uuid" do
@@ -333,15 +332,14 @@ defmodule PhoenixKitManufacturingTest do
       assert String.ends_with?(Paths.machine_comments(uuid), "machines/#{uuid}/comments")
     end
 
-    test "operation_edit/1 embeds the uuid" do
-      uuid = "018f0000-0000-7000-8000-000000000000"
-      assert String.ends_with?(Paths.operation_edit(uuid), "operations/#{uuid}/edit")
+    test "machines/0 is prefixed by index/0" do
+      assert String.starts_with?(Paths.machines(), Paths.index())
     end
 
-    test "sub-paths are prefixed by index/0" do
-      assert String.starts_with?(Paths.machines(), Paths.index())
-      assert String.starts_with?(Paths.types(), Paths.index())
-      assert String.starts_with?(Paths.operations(), Paths.index())
+    test "types/0, operations/0 and defect_reasons/0 are entities routes, not module subpaths" do
+      refute String.starts_with?(Paths.types(), Paths.index())
+      refute String.starts_with?(Paths.operations(), Paths.index())
+      refute String.starts_with?(Paths.defect_reasons(), Paths.index())
     end
   end
 end
