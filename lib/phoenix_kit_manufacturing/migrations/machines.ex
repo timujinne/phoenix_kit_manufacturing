@@ -99,6 +99,22 @@ defmodule PhoenixKitManufacturing.Migrations.Machines do
   Add a `{version, probe}` pair to `version_probes/0` every time
   `@current_version` is bumped.
 
+  `probe_v5?/1` is the first probe that breaks the "only checks additions"
+  pattern every earlier probe follows: V5 is the first version that
+  *removes* structure (the three legacy directory tables and both FK
+  constraints V1/V3 added), so it checks for the *absence* of that
+  structure in addition to the presence of everything that survives
+  (`phoenix_kit_machines`'s V2 columns, both join tables). One consequence:
+  `probe_v3?/1` (checks for `phoenix_kit_operations`) and `probe_v4?/1`
+  (checks for `phoenix_kit_defect_reasons`) now read back `false` on a
+  fully-migrated V5 host, since V5 drops both of those tables. That is
+  safe, not a bug — `migrated_version_runtime/1` sorts `version_probes/0`
+  highest-version-first and stops at the *first* probe that passes
+  (`Enum.find_value/3`), so a V5 host matches `probe_v5?/1` first and
+  `probe_v3?/1`/`probe_v4?/1` are never even evaluated for it. Both probes
+  remain exactly correct for their original purpose: detecting a host
+  genuinely stuck at V3 or V4 that has not yet run the V5 migration.
+
   ## Rollback
 
   `down/1` is **not supported** as of V5 — it unconditionally raises. Once
@@ -159,7 +175,8 @@ defmodule PhoenixKitManufacturing.Migrations.Machines do
       {1, &probe_v1?/1},
       {2, &probe_v2?/1},
       {3, &probe_v3?/1},
-      {4, &probe_v4?/1}
+      {4, &probe_v4?/1},
+      {5, &probe_v5?/1}
     ]
   end
 
@@ -233,6 +250,51 @@ defmodule PhoenixKitManufacturing.Migrations.Machines do
   # all-new-table probes above.
   defp probe_v4?(prefix) do
     table_exists?(prefix, "phoenix_kit_defect_reasons")
+  end
+
+  # Deliberately *not* `@v2_columns` — that list includes
+  # `{"phoenix_kit_machine_types", "field_template"}`, a column on a table
+  # V5 drops. Reusing it here would make `probe_v5?/1` check for a column
+  # on a table that no longer exists, which always reads back `false` and
+  # would collapse the entire probe ladder to "not migrated" on every
+  # fully-migrated V5 host. This is the `phoenix_kit_machines`-only subset
+  # of the V2 structural additions — the ones that still exist post-V5 —
+  # reused here as a "this is a real, non-empty schema" sanity check.
+  @v5_machines_columns [
+    {"phoenix_kit_machines", "model"},
+    {"phoenix_kit_machines", "manufacture_year"},
+    {"phoenix_kit_machines", "commissioned_on"},
+    {"phoenix_kit_machines", "warranty_until"},
+    {"phoenix_kit_machines", "to_last_on"},
+    {"phoenix_kit_machines", "to_interval_days"},
+    {"phoenix_kit_machines", "to_next_on"},
+    {"phoenix_kit_machines", "notes"},
+    {"phoenix_kit_machines", "location_uuid"},
+    {"phoenix_kit_machines", "space_uuid"}
+  ]
+
+  # Unlike every earlier probe (which only checks for *additions*), V5 both
+  # adds nothing new to `phoenix_kit_machines` and *removes* structure — the
+  # three legacy directory tables and both FK constraints V1/V3 put on the
+  # join tables. So `probe_v5?/1` checks a mix of "still there" (machines'
+  # V2 columns, both join tables) and "gone" (the three source tables, both
+  # FK constraints) — every one of V5's structural changes, positive or
+  # negative, same discipline as every probe above. `fk_constraint_name/3`
+  # (below) is reused rather than duplicated — it's the same catalog lookup
+  # `drop_fk_constraint/4` uses during `up/1`.
+  defp probe_v5?(prefix) do
+    Enum.all?(@v5_machines_columns, fn {table, column} ->
+      column_exists?(prefix, table, column)
+    end) and
+      table_exists?(prefix, "phoenix_kit_machine_type_assignments") and
+      table_exists?(prefix, "phoenix_kit_machine_operations") and
+      not table_exists?(prefix, "phoenix_kit_machine_types") and
+      not table_exists?(prefix, "phoenix_kit_operations") and
+      not table_exists?(prefix, "phoenix_kit_defect_reasons") and
+      is_nil(
+        fk_constraint_name(prefix, "phoenix_kit_machine_type_assignments", "machine_type_uuid")
+      ) and
+      is_nil(fk_constraint_name(prefix, "phoenix_kit_machine_operations", "operation_uuid"))
   end
 
   @doc "Applies the Manufacturing module migration. Accepts a keyword list or map."
