@@ -91,6 +91,39 @@ defmodule PhoenixKitManufacturing.Web.MachineTypeTemplateLiveTest do
       assert reloaded.metadata["legacy_uuid"] == "11111111-1111-1111-1111-111111111111"
     end
 
+    test "a metadata key written by another process after mount survives save", %{conn: conn} do
+      type = create_machine_type!("Mill")
+
+      conn = put_test_scope(conn, fake_scope())
+      {:ok, view, _html} = live(conn, template_path(type.uuid))
+
+      # Simulate a concurrent write (e.g. the trash flow setting
+      # `trashed_from_status`) landing between this session's mount and its
+      # save — `persist/2` must merge onto a fresh read, not the
+      # mount-time `entity_data` snapshot, or this key would be clobbered.
+      {:ok, _} =
+        EntityData.update(type, %{
+          metadata: Map.put(type.metadata || %{}, "trashed_from_status", "published")
+        })
+
+      render_click(view, "add_field_row", %{})
+
+      assert {:error, {:live_redirect, %{to: to}}} =
+               view
+               |> form("form",
+                 field_template: %{
+                   "0" => %{"key" => "rpm", "label" => "RPM", "type" => "number"}
+                 }
+               )
+               |> render_submit()
+
+      assert to == Paths.types()
+
+      reloaded = EntityData.get!(type.uuid)
+      assert reloaded.metadata["trashed_from_status"] == "published"
+      assert [%{"key" => "rpm"}] = reloaded.metadata["field_template"]
+    end
+
     test "removing the only row and saving persists an empty template", %{conn: conn} do
       type =
         create_machine_type!("Press",

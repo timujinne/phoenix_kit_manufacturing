@@ -48,13 +48,21 @@ defmodule PhoenixKitManufacturing.Web.MachineTypeTemplateLive do
   ## Persistence
 
   Saves via `EntityData.update/3` with only `metadata:` in the attrs —
-  `Map.merge`d onto the record's *existing* metadata (not replaced) so
+  `Map.put`ted onto the record's *existing* metadata (not replaced) so
   `legacy_uuid` (and any other key living there) survives untouched. Reads
   are a plain `EntityData.get/2` (not through `EntitiesRegistry` — this page
   edits a single record it already knows the uuid of, so the ETS cache
   buys nothing); `EntityData.update/3` broadcasts its own
   `PhoenixKitEntities.Events` message, so `EntitiesRegistry` picks up the
   change on its own.
+
+  `persist/2` re-reads the record via `EntityData.get/1` immediately before
+  merging, rather than reusing `socket.assigns.entity_data` (the mount-time
+  snapshot) — the session can sit open on this page for a while, and
+  another process (e.g. the trash flow writing `trashed_from_status`,
+  see `phoenix_kit_entities`) may have written a different `metadata` key
+  in the meantime. Merging onto a fresh read avoids clobbering that
+  concurrent write with the stale snapshot's copy of the same key.
   """
 
   use Phoenix.LiveView
@@ -165,7 +173,12 @@ defmodule PhoenixKitManufacturing.Web.MachineTypeTemplateLive do
   end
 
   defp persist(socket, rows) do
-    entity_data = socket.assigns.entity_data
+    stale = socket.assigns.entity_data
+    # Re-read immediately before merging (see moduledoc "Persistence") —
+    # `stale.metadata` may be missing a key another process wrote after
+    # mount. Falls back to `stale` itself if the record was hard-deleted
+    # out from under this session in the meantime.
+    entity_data = EntityData.get(stale.uuid) || stale
     metadata = Map.put(entity_data.metadata || %{}, "field_template", rows)
 
     case EntityData.update(entity_data, %{metadata: metadata}, actor_opts(socket)) do
