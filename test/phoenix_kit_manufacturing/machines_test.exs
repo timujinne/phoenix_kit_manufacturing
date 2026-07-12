@@ -1,38 +1,46 @@
 defmodule PhoenixKitManufacturing.MachinesTest do
   # Integration tests for the context — require PostgreSQL, excluded when
   # the DB is unavailable (see test_helper.exs).
-  use PhoenixKitManufacturing.DataCase, async: true
+  #
+  # `async: false`: the describe blocks below that touch `machine_type`
+  # entity_data (via `create_machine_type!/1`) start their own
+  # `EntitiesRegistry` with `start_supervised!/1` and call `reload/0` from
+  # inside the test process — the registry queries the DB from its *own*
+  # GenServer process, so the Sandbox must run in shared mode for that
+  # reload to see this test's not-yet-committed fixtures. Same pattern as
+  # `EntitiesRegistryTest` and (in the andi codebase this registry is
+  # modeled on) `Andi.Orders.StatusRegistryTest`.
+  use PhoenixKitManufacturing.DataCase, async: false
 
-  alias PhoenixKitManufacturing.{Machines, Operations}
-  alias PhoenixKitManufacturing.Schemas.{Machine, MachineType}
+  alias PhoenixKit.Utils.Multilang
+  alias PhoenixKitEntities, as: Entities
+  alias PhoenixKitEntities.EntityData
+  alias PhoenixKitManufacturing.{EntitiesRegistry, Machines, Operations}
+  alias PhoenixKitManufacturing.Schemas.Machine
 
-  describe "machine types" do
-    test "create/list/count/get/update/delete round-trip" do
+  describe "machine types (read via EntitiesRegistry)" do
+    setup do
+      start_supervised!(EntitiesRegistry)
+      :ok
+    end
+
+    test "list_machine_types/1 and count_machine_types/1 see published entity_data records" do
       assert Machines.count_machine_types() == 0
 
-      {:ok, %MachineType{} = cnc} = Machines.create_machine_type(%{name: "CNC"})
-      assert cnc.status == "active"
+      cnc = create_machine_type!(%{name: "CNC"})
+
       assert Machines.count_machine_types() == 1
-      assert [%MachineType{name: "CNC"}] = Machines.list_machine_types()
-      assert %MachineType{name: "CNC"} = Machines.get_machine_type(cnc.uuid)
-
-      {:ok, updated} = Machines.update_machine_type(cnc, %{status: "inactive"})
-      assert updated.status == "inactive"
-
-      {:ok, _} = Machines.delete_machine_type(cnc)
-      assert Machines.count_machine_types() == 0
+      assert [%{uuid: uuid, name: "CNC", status: "published"}] = Machines.list_machine_types()
+      assert uuid == cnc.uuid
     end
 
-    test "list_machine_types/1 filters by status" do
-      {:ok, _} = Machines.create_machine_type(%{name: "Active", status: "active"})
-      {:ok, _} = Machines.create_machine_type(%{name: "Inactive", status: "inactive"})
+    test "list_machine_types/1 and count_machine_types/1 filter by :status" do
+      create_machine_type!(%{name: "Published"})
+      create_machine_type!(%{name: "Draft", status: "draft"})
 
-      assert [%MachineType{name: "Active"}] = Machines.list_machine_types(status: "active")
-    end
-
-    test "create_machine_type/2 returns a changeset error on a blank name" do
-      assert {:error, changeset} = Machines.create_machine_type(%{name: ""})
-      assert %{name: [_ | _]} = errors_on(changeset)
+      assert [%{name: "Published"}] = Machines.list_machine_types(status: "published")
+      assert Machines.count_machine_types(status: "draft") == 1
+      assert Machines.count_machine_types() == 2
     end
   end
 
@@ -58,17 +66,23 @@ defmodule PhoenixKitManufacturing.MachinesTest do
       {:ok, m1} = Machines.create_machine(%{name: "CNC-01"})
       {:ok, m2} = Machines.create_machine(%{name: "CNC-02"})
       {:ok, m3} = Machines.create_machine(%{name: "CNC-03"})
-      {:ok, cnc} = Machines.create_machine_type(%{name: "CNC"})
-      {:ok, mill} = Machines.create_machine_type(%{name: "Milling"})
+      # `machine_type_uuid` is a soft reference (no FK, see
+      # `Schemas.MachineTypeAssignment` moduledoc) — this function only
+      # groups whatever uuids are stored in the assignment rows, so a bare
+      # generated uuid exercises the batch-grouping logic just as well as
+      # a real `machine_type` entity_data uuid would, without needing
+      # `EntitiesRegistry` running for this describe block.
+      cnc_uuid = Ecto.UUID.generate()
+      mill_uuid = Ecto.UUID.generate()
 
-      {:ok, :synced} = Machines.sync_machine_types(m1.uuid, [cnc.uuid, mill.uuid])
-      {:ok, :synced} = Machines.sync_machine_types(m2.uuid, [cnc.uuid])
+      {:ok, :synced} = Machines.sync_machine_types(m1.uuid, [cnc_uuid, mill_uuid])
+      {:ok, :synced} = Machines.sync_machine_types(m2.uuid, [cnc_uuid])
       # m3 is left with no linked types on purpose.
 
       result = Machines.linked_type_uuids_by_machine([m1.uuid, m2.uuid, m3.uuid])
 
-      assert MapSet.new(Map.fetch!(result, m1.uuid)) == MapSet.new([cnc.uuid, mill.uuid])
-      assert Map.fetch!(result, m2.uuid) == [cnc.uuid]
+      assert MapSet.new(Map.fetch!(result, m1.uuid)) == MapSet.new([cnc_uuid, mill_uuid])
+      assert Map.fetch!(result, m2.uuid) == [cnc_uuid]
       refute Map.has_key?(result, m3.uuid)
     end
 
@@ -79,9 +93,10 @@ defmodule PhoenixKitManufacturing.MachinesTest do
 
   describe "machine ↔ type sync" do
     setup do
+      start_supervised!(EntitiesRegistry)
       {:ok, machine} = Machines.create_machine(%{name: "CNC-01"})
-      {:ok, cnc} = Machines.create_machine_type(%{name: "CNC"})
-      {:ok, mill} = Machines.create_machine_type(%{name: "Milling"})
+      cnc = create_machine_type!(%{name: "CNC"})
+      mill = create_machine_type!(%{name: "Milling"})
       %{machine: machine, cnc: cnc, mill: mill}
     end
 
@@ -103,10 +118,21 @@ defmodule PhoenixKitManufacturing.MachinesTest do
       assert {:ok, :unchanged} = Machines.sync_machine_types(machine.uuid, [cnc.uuid])
     end
 
-    test "deleting a type removes its assignments", %{machine: machine, cnc: cnc} do
+    test "trashing a type does not cascade to its assignments (soft reference, no FK)", %{
+      machine: machine,
+      cnc: cnc
+    } do
       {:ok, :synced} = Machines.sync_machine_types(machine.uuid, [cnc.uuid])
-      {:ok, _} = Machines.delete_machine_type(cnc)
-      assert Machines.linked_type_uuids(machine.uuid) == []
+
+      {:ok, _} = EntityData.trash(cnc)
+      EntitiesRegistry.reload()
+
+      # No FK/cascade as of the entities migration (see
+      # ENTITIES_MIGRATION_SPEC.md §5 risk #1) — the assignment row is a
+      # dangling soft reference, not removed; the type itself just drops
+      # out of the (non-trashed) list.
+      assert Machines.linked_type_uuids(machine.uuid) == [cnc.uuid]
+      refute cnc.uuid in Enum.map(Machines.list_machine_types(), & &1.uuid)
     end
   end
 
@@ -252,16 +278,18 @@ defmodule PhoenixKitManufacturing.MachinesTest do
 
   describe "merged_field_template/1" do
     setup do
-      {:ok, alpha} =
-        Machines.create_machine_type(%{
+      start_supervised!(EntitiesRegistry)
+
+      alpha =
+        create_machine_type!(%{
           name: "Alpha",
           field_template: [
             %{"key" => "power_kw", "label" => "Power (from Alpha)", "type" => "number"}
           ]
         })
 
-      {:ok, beta} =
-        Machines.create_machine_type(%{
+      beta =
+        create_machine_type!(%{
           name: "Beta",
           field_template: [
             %{"key" => "power_kw", "label" => "Power (from Beta)", "type" => "number"},
@@ -283,7 +311,7 @@ defmodule PhoenixKitManufacturing.MachinesTest do
              ] = Machines.merged_field_template([beta.uuid])
     end
 
-    test "on a key collision, the alphabetically-first type name wins", %{
+    test "on a key collision, the earlier-created type wins (registry position order)", %{
       alpha: alpha,
       beta: beta
     } do
@@ -300,7 +328,9 @@ defmodule PhoenixKitManufacturing.MachinesTest do
       beta: beta
     } do
       # Passing Beta before Alpha must not change the winner — merge order
-      # follows `list_machine_types/1`'s name ordering, not `type_uuids`.
+      # follows `EntitiesRegistry.list/3`'s position order (Alpha was
+      # created first in this describe block's `setup`, so it sorts
+      # first), not the order of `type_uuids`.
       merged = Machines.merged_field_template([beta.uuid, alpha.uuid])
 
       assert [%{"key" => "power_kw", "label" => "Power (from Alpha)"} | _] = merged
@@ -312,15 +342,15 @@ defmodule PhoenixKitManufacturing.MachinesTest do
       assert Machines.merged_field_template([unrelated_uuid]) == []
     end
 
-    test "excludes inactive types (list_machine_types(status: \"active\") filter)" do
-      {:ok, inactive} =
-        Machines.create_machine_type(%{
+    test "excludes draft types (merged_field_template only reads status: \"published\")" do
+      draft =
+        create_machine_type!(%{
           name: "Gamma",
-          status: "inactive",
+          status: "draft",
           field_template: [%{"key" => "x", "label" => "X", "type" => "text"}]
         })
 
-      assert Machines.merged_field_template([inactive.uuid]) == []
+      assert Machines.merged_field_template([draft.uuid]) == []
     end
   end
 
@@ -344,5 +374,35 @@ defmodule PhoenixKitManufacturing.MachinesTest do
       row = assert_activity_logged("machine.created", metadata_has: %{"name" => "Anon"})
       assert row.module == "manufacturing"
     end
+  end
+
+  ## Helpers
+
+  # `machine_type` CRUD moved to the generic entities admin UI (see
+  # `Machines` moduledoc) — tests that need a `machine_type` record build
+  # it directly against `phoenix_kit_entities`'s own API. Callers must have
+  # already started `EntitiesRegistry` (`start_supervised!/1`, see the
+  # relevant `describe` blocks' `setup`) — this always ends with a
+  # synchronous `reload/0` so the read-through cache is current by the
+  # time the caller's assertions run.
+  defp create_machine_type!(attrs) do
+    entity =
+      Entities.get_entity_by_name("machine_type") ||
+        raise "machine_type entity not seeded — check Migrations.Machines V5"
+
+    name = Map.fetch!(attrs, :name)
+    primary = Multilang.primary_language()
+
+    {:ok, record} =
+      EntityData.create(%{
+        entity_uuid: entity.uuid,
+        title: name,
+        status: Map.get(attrs, :status, "published"),
+        data: %{"_primary_language" => primary, primary => %{"_title" => name}},
+        metadata: %{"field_template" => Map.get(attrs, :field_template, [])}
+      })
+
+    EntitiesRegistry.reload()
+    record
   end
 end

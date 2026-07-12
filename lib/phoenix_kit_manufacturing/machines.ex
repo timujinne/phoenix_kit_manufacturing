@@ -1,12 +1,19 @@
 defmodule PhoenixKitManufacturing.Machines do
   @moduledoc """
-  Context module for managing machines and machine types.
+  Context module for managing machines, plus thin read wrappers over the
+  `machine_type` / `operation` `phoenix_kit_entities` records used to tag
+  and describe them.
 
   Machines and types have a many-to-many relationship via a join table, so
   a machine can be tagged with several types at once (e.g. both "CNC" and
-  "Milling").
-
-  Both machines and types use hard-delete only (simple reference data).
+  "Milling"). Machines use hard-delete (simple reference data); machine
+  type/operation CRUD moved to the generic entities admin UI
+  (`/admin/entities/machine_type/data`, `/admin/entities/operation/data`)
+  as part of the entities migration — see
+  `dev_docs/ENTITIES_MIGRATION_SPEC.md`. This module keeps only the
+  read-side other module code (pickers, the machine form,
+  `Web.DashboardLive`'s stat tile) still needs, resolved through
+  `PhoenixKitManufacturing.EntitiesRegistry`.
 
   ## Activity logging
 
@@ -22,11 +29,11 @@ defmodule PhoenixKitManufacturing.Machines do
 
       alias PhoenixKitManufacturing.Machines
 
-      {:ok, cnc} = Machines.create_machine_type(%{name: "CNC"})
       {:ok, mill} = Machines.create_machine(%{name: "CNC-01", code: "M-001"})
-      {:ok, _} = Machines.sync_machine_types(mill.uuid, [cnc.uuid])
+      [%{uuid: type_uuid} | _] = Machines.list_machine_types(status: "published")
+      {:ok, _} = Machines.sync_machine_types(mill.uuid, [type_uuid])
 
-      Machines.list_machines(type_uuid: cnc.uuid)
+      Machines.list_machines(type_uuid: type_uuid)
       Machines.count_machines()
   """
 
@@ -36,13 +43,12 @@ defmodule PhoenixKitManufacturing.Machines do
 
   alias PhoenixKit.Utils.Multilang
   alias PhoenixKitLocations.{Locations, Spaces}
+  alias PhoenixKitManufacturing.EntitiesRegistry
 
   alias PhoenixKitManufacturing.Schemas.{
     Machine,
     MachineOperation,
-    MachineType,
-    MachineTypeAssignment,
-    Operation
+    MachineTypeAssignment
   }
 
   @module_key "manufacturing"
@@ -50,78 +56,52 @@ defmodule PhoenixKitManufacturing.Machines do
   @type opts :: keyword()
   @type status_filter :: [status: String.t()]
   @type list_machines_opts :: [status: String.t(), type_uuid: String.t()]
+  @type list_machine_types_opts :: [locale: String.t() | nil, status: String.t() | nil]
 
   defp repo, do: PhoenixKit.RepoHelper.repo()
 
   # ═══════════════════════════════════════════════════════════════════
-  # Machine Types
+  # Machine Types (read-only — CRUD lives under the generic entities
+  # admin UI, see moduledoc)
   # ═══════════════════════════════════════════════════════════════════
 
   @doc """
-  Lists all machine types, ordered by name.
+  Lists machine types via `EntitiesRegistry`.
 
   ## Options
 
-    * `:status` — filter by status (e.g. `"active"`, `"inactive"`).
+    * `:locale` — resolves each record's `:name` for this locale (a bare
+      Gettext code or BCP-47 dialect); `nil` (default) resolves the
+      primary-language title.
+    * `:status` — filter by exact status (e.g. `"published"`). `nil`
+      (default, unlike the old `"active"`-by-convention behavior) returns
+      every cached status — callers that only want published records must
+      pass `status: "published"` explicitly.
   """
-  @spec list_machine_types(status_filter) :: [MachineType.t()]
+  @spec list_machine_types(list_machine_types_opts) :: [EntitiesRegistry.record()]
   def list_machine_types(opts \\ []) do
-    MachineType
-    |> from(order_by: [asc: :name])
-    |> filter_status(opts)
-    |> repo().all()
+    EntitiesRegistry.list(:machine_type, Keyword.get(opts, :locale),
+      status: Keyword.get(opts, :status)
+    )
   end
 
-  @doc "Fetches a machine type by UUID. Returns `nil` if not found."
-  @spec get_machine_type(String.t()) :: MachineType.t() | nil
-  def get_machine_type(uuid), do: repo().get(MachineType, uuid)
+  @doc """
+  Returns the total count of machine types.
 
-  @doc "Fetches a machine type by name (case-sensitive). Returns `nil` if not found."
-  @spec get_machine_type_by_name(String.t()) :: MachineType.t() | nil
-  def get_machine_type_by_name(name), do: repo().get_by(MachineType, name: name)
+  A thin `EntitiesRegistry` wrapper kept alongside `list_machine_types/1`
+  (rather than removed with the rest of the machine-type CRUD) because
+  `Web.DashboardLive`'s stat tile still calls it — nothing in the entities
+  migration replaces that caller.
 
-  @doc "Returns the total count of machine types."
+  ## Options
+
+    * `:status` — filter by exact status, same as `list_machine_types/1`.
+  """
   @spec count_machine_types(status_filter) :: non_neg_integer()
   def count_machine_types(opts \\ []) do
-    MachineType
-    |> from(select: count())
-    |> filter_status(opts)
-    |> repo().one()
-  end
-
-  @doc "Creates a machine type. Required: `:name`. Optional: `:description`, `:status`, `:data`."
-  @spec create_machine_type(map(), opts) ::
-          {:ok, MachineType.t()} | {:error, Ecto.Changeset.t()}
-  def create_machine_type(attrs, opts \\ []) do
-    %MachineType{}
-    |> MachineType.changeset(attrs)
-    |> repo().insert()
-    |> log_activity("machine_type.created", "machine_type", opts, &type_metadata/1)
-  end
-
-  @doc "Updates a machine type with the given attributes."
-  @spec update_machine_type(MachineType.t(), map(), opts) ::
-          {:ok, MachineType.t()} | {:error, Ecto.Changeset.t()}
-  def update_machine_type(%MachineType{} = machine_type, attrs, opts \\ []) do
-    machine_type
-    |> MachineType.changeset(attrs)
-    |> repo().update()
-    |> log_activity("machine_type.updated", "machine_type", opts, &type_metadata/1)
-  end
-
-  @doc "Hard-deletes a machine type. Cascades to type assignments (machines keep existing, lose the link)."
-  @spec delete_machine_type(MachineType.t(), opts) ::
-          {:ok, MachineType.t()} | {:error, Ecto.Changeset.t()}
-  def delete_machine_type(%MachineType{} = machine_type, opts \\ []) do
-    machine_type
-    |> repo().delete()
-    |> log_activity("machine_type.deleted", "machine_type", opts, &type_metadata/1)
-  end
-
-  @doc "Returns an `Ecto.Changeset` for tracking machine type changes."
-  @spec change_machine_type(MachineType.t(), map()) :: Ecto.Changeset.t()
-  def change_machine_type(%MachineType{} = machine_type, attrs \\ %{}) do
-    MachineType.changeset(machine_type, attrs)
+    :machine_type
+    |> EntitiesRegistry.list(nil, status: Keyword.get(opts, :status))
+    |> length()
   end
 
   # ═══════════════════════════════════════════════════════════════════
@@ -336,6 +316,20 @@ defmodule PhoenixKitManufacturing.Machines do
     repo().one(query) == true
   end
 
+  @doc """
+  Returns the number of machines with `type_uuid` currently assigned.
+
+  Intended as the host app's `reverse_references` `count_fn` for the
+  `machine_type` entity (an advisory "used by N machines" hint on the
+  entities trash UI) — see `dev_docs/IMPLEMENTATION_PLAN_E.md`'s ANDI
+  follow-up task. Not called anywhere in this module itself.
+  """
+  @spec count_machines_with_type(String.t()) :: non_neg_integer()
+  def count_machines_with_type(type_uuid) do
+    from(a in MachineTypeAssignment, where: a.machine_type_uuid == ^type_uuid, select: count())
+    |> repo().one()
+  end
+
   # ═══════════════════════════════════════════════════════════════════
   # Machine ↔ Operation linking (many-to-many, with a per-machine time-norm
   # override — see `Schemas.MachineOperation`)
@@ -345,29 +339,32 @@ defmodule PhoenixKitManufacturing.Machines do
   Lists the operations linked to a machine, each paired with its
   per-machine time-norm override.
 
-  Returns `%{operation: Operation.t(), time_norm_seconds: integer() | nil}`
-  maps, ordered by the linked operation's name. `time_norm_seconds` is the
-  raw `MachineOperation` override as stored — `nil` means "no override,
-  use the operation's own `base_time_norm_seconds`"; resolving that
-  fallback is left to the caller (this function doesn't look at
-  `operation.base_time_norm_seconds` itself).
+  Returns `%{operation: EntitiesRegistry.record() | nil, time_norm_seconds:
+  integer() | nil}` maps, ordered by the linked operation's name (resolved
+  from `EntitiesRegistry` — `operation_uuid` is a soft reference, see
+  `Schemas.MachineOperation` moduledoc, and carries no name of its own).
+  `operation` is `nil` for a dangling link (the linked entity-data record
+  was hard-removed out from under a soft reference — an accepted risk of
+  the entities migration, see `dev_docs/ENTITIES_MIGRATION_SPEC.md` §5);
+  such rows sort first. `time_norm_seconds` is the raw `MachineOperation`
+  override as stored — `nil` means "no override, use the operation's own
+  `base_time_norm_seconds`"; resolving that fallback is left to the caller
+  (this function doesn't look at `operation.base_time_norm_seconds`
+  itself).
   """
   @spec list_machine_operations(String.t()) :: [
-          %{operation: Operation.t(), time_norm_seconds: integer() | nil}
+          %{operation: EntitiesRegistry.record() | nil, time_norm_seconds: integer() | nil}
         ]
   def list_machine_operations(machine_uuid) do
-    # `operation_uuid` is a soft reference (see `Schemas.MachineOperation`
-    # moduledoc), not an Ecto association — join explicitly on the uuid
-    # columns instead of `assoc(mo, :operation)`.
-    from(mo in MachineOperation,
-      join: o in Operation,
-      on: o.uuid == mo.operation_uuid,
-      where: mo.machine_uuid == ^machine_uuid,
-      order_by: [asc: o.name],
-      select: {mo, o}
-    )
+    from(mo in MachineOperation, where: mo.machine_uuid == ^machine_uuid)
     |> repo().all()
-    |> Enum.map(fn {mo, o} -> %{operation: o, time_norm_seconds: mo.time_norm_seconds} end)
+    |> Enum.map(fn mo ->
+      %{
+        operation: EntitiesRegistry.get(mo.operation_uuid, :operation),
+        time_norm_seconds: mo.time_norm_seconds
+      }
+    end)
+    |> Enum.sort_by(fn %{operation: operation} -> (operation && operation.name) || "" end)
   end
 
   @doc """
@@ -485,6 +482,13 @@ defmodule PhoenixKitManufacturing.Machines do
     repo().one(query) == true
   end
 
+  @doc "Same as `count_machines_with_type/1`, for the `operation` entity."
+  @spec count_machines_with_operation(String.t()) :: non_neg_integer()
+  def count_machines_with_operation(operation_uuid) do
+    from(mo in MachineOperation, where: mo.operation_uuid == ^operation_uuid, select: count())
+    |> repo().one()
+  end
+
   # ═══════════════════════════════════════════════════════════════════
   # Passport helpers — soft location link, merged field_template
   # ═══════════════════════════════════════════════════════════════════
@@ -557,7 +561,7 @@ defmodule PhoenixKitManufacturing.Machines do
   defp blank_to_nil(value), do: value
 
   @doc """
-  Merges the `field_template` rows of every active machine type in
+  Merges the `field_template` rows of every published machine type in
   `type_uuids` into a single ordered list, for rendering the dynamic
   `metadata` inputs on the machine form.
 
@@ -565,37 +569,49 @@ defmodule PhoenixKitManufacturing.Machines do
   machine" (e.g. `MapSet.to_list/1` of the toggled type badges on the
   form) — this function does no linking lookup of its own, it only merges.
 
-  Types are read via `list_machine_types(status: "active")`, which orders
-  by `:name` — so the merge order (and therefore which type wins a key
-  collision) is alphabetical by type name, **not** the order of
+  Types are read via `EntitiesRegistry.list(:machine_type, nil, status:
+  "published")` — locale isn't threaded through (unlike
+  `list_machine_types/1`) because this function never reads a record's
+  `:name`/`:titles`, only `metadata["field_template"]`, so the registry's
+  locale-dependent title resolution is irrelevant here. Records come back
+  ordered by `position` (drag-order in the entities admin UI;
+  creation-order immediately after the V5 migration seed, since every
+  migrated record starts at `position: 0` — see the E-plan's "Решения по
+  открытым вопросам" #5) — so the merge order (and therefore which type
+  wins a key collision) follows that order, **not** the order of
   `type_uuids`. When two linked types both define a `field_template` row
-  with the same `key`, the earliest type in that alphabetical order wins
-  and the later row is dropped silently — this is a deliberate "first
-  wins" merge, not an error (unlike a duplicate key *within* one type's own
-  template, which `MachineType.changeset/2` rejects at the source). Callers
-  rendering the merged template SHOULD hint which type a field came from
-  when a collision is possible (e.g. a "from <type name>" caption next to
-  the label) — this function only resolves the winner, it doesn't surface
-  which types lost.
+  with the same `key`, the earlier one in registry order wins and the
+  later row is dropped silently — this is a deliberate "first wins" merge,
+  not an error. Callers rendering the merged template SHOULD hint which
+  type a field came from when a collision is possible (e.g. a "from <type
+  name>" caption next to the label) — this function only resolves the
+  winner, it doesn't surface which types lost.
   """
   @spec merged_field_template([String.t()]) :: [map()]
   def merged_field_template(type_uuids) when is_list(type_uuids) do
     wanted = MapSet.new(type_uuids)
 
     {rows, _seen_keys} =
-      list_machine_types(status: "active")
+      :machine_type
+      |> EntitiesRegistry.list(nil, status: "published")
       |> Enum.filter(&MapSet.member?(wanted, &1.uuid))
       |> Enum.reduce({[], MapSet.new()}, &merge_field_template_rows/2)
 
     Enum.reverse(rows)
   end
 
-  defp merge_field_template_rows(%MachineType{field_template: field_template}, acc) do
+  # `field_template` lives in `metadata` (not `data`) as of the entities
+  # migration — see `EntitiesRegistry`'s moduledoc "Record shape" section
+  # for why (the generic entities form replaces the whole primary-language
+  # `data` block on every save, which would silently drop an undeclared
+  # key living there).
+  defp merge_field_template_rows(%{metadata: metadata}, acc) do
+    field_template = Map.get(metadata, "field_template") || []
     Enum.reduce(field_template, acc, &accumulate_field_template_row/2)
   end
 
   # "First wins": a row is only added if its key hasn't been contributed by
-  # an earlier (alphabetically, by type name) type already — see the
+  # an earlier (in registry order) type already — see the
   # `merged_field_template/1` doc for why collisions aren't an error.
   defp accumulate_field_template_row(row, {rows, seen_keys}) do
     key = field_template_row_key(row)
@@ -608,9 +624,11 @@ defmodule PhoenixKitManufacturing.Machines do
   end
 
   # `field_template` rows are string-keyed once round-tripped through the
-  # `field_template` JSONB column (the only source `merged_field_template/1`
-  # reads from), but tolerate atom keys too for parity with
-  # `Schemas.MachineType`'s own row accessor.
+  # `metadata["field_template"]` JSONB path (the only source
+  # `merged_field_template/1` reads from as of the entities migration —
+  # see `EntitiesRegistry`'s "Record shape" moduledoc section), but
+  # tolerate atom keys too for callers that construct rows in-process
+  # before they've round-tripped through Postgres.
   defp field_template_row_key(row) when is_map(row), do: Map.get(row, "key") || Map.get(row, :key)
 
   # ═══════════════════════════════════════════════════════════════════
@@ -699,10 +717,6 @@ defmodule PhoenixKitManufacturing.Machines do
 
   defp machine_metadata(%Machine{} = m) do
     %{"name" => m.name, "code" => m.code, "status" => m.status}
-  end
-
-  defp type_metadata(%MachineType{} = t) do
-    %{"name" => t.name, "status" => t.status}
   end
 
   @doc """
