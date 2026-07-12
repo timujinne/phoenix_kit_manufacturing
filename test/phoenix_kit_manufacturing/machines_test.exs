@@ -2,20 +2,21 @@ defmodule PhoenixKitManufacturing.MachinesTest do
   # Integration tests for the context — require PostgreSQL, excluded when
   # the DB is unavailable (see test_helper.exs).
   #
-  # `async: false`: the describe blocks below that touch `machine_type`
-  # entity_data (via `create_machine_type!/1`) start their own
-  # `EntitiesRegistry` with `start_supervised!/1` and call `reload/0` from
-  # inside the test process — the registry queries the DB from its *own*
-  # GenServer process, so the Sandbox must run in shared mode for that
-  # reload to see this test's not-yet-committed fixtures. Same pattern as
-  # `EntitiesRegistryTest` and (in the andi codebase this registry is
-  # modeled on) `Andi.Orders.StatusRegistryTest`.
+  # `async: false`: the describe blocks below that touch `machine_type` /
+  # `operation` entity_data (via `create_machine_type!/1` /
+  # `create_operation!/1`) start their own `EntitiesRegistry` with
+  # `start_supervised!/1` and call `reload/0` from inside the test process
+  # — the registry queries the DB from its *own* GenServer process, so the
+  # Sandbox must run in shared mode for that reload to see this test's
+  # not-yet-committed fixtures. Same pattern as `EntitiesRegistryTest` and
+  # (in the andi codebase this registry is modeled on)
+  # `Andi.Orders.StatusRegistryTest`.
   use PhoenixKitManufacturing.DataCase, async: false
 
   alias PhoenixKit.Utils.Multilang
   alias PhoenixKitEntities, as: Entities
   alias PhoenixKitEntities.EntityData
-  alias PhoenixKitManufacturing.{EntitiesRegistry, Machines, Operations}
+  alias PhoenixKitManufacturing.{EntitiesRegistry, Machines}
   alias PhoenixKitManufacturing.Schemas.Machine
 
   describe "machine types (read via EntitiesRegistry)" do
@@ -138,12 +139,10 @@ defmodule PhoenixKitManufacturing.MachinesTest do
 
   describe "machine ↔ operation linking" do
     setup do
+      start_supervised!(EntitiesRegistry)
       {:ok, machine} = Machines.create_machine(%{name: "CNC-01"})
-      {:ok, cutting} = Operations.create_operation(%{name: "Cutting", base_time_norm_seconds: 60})
-
-      {:ok, welding} =
-        Operations.create_operation(%{name: "Welding", base_time_norm_seconds: 120})
-
+      cutting = create_operation!(%{name: "Cutting", base_time_norm_seconds: 60})
+      welding = create_operation!(%{name: "Welding", base_time_norm_seconds: 120})
       %{machine: machine, cutting: cutting, welding: welding}
     end
 
@@ -211,10 +210,21 @@ defmodule PhoenixKitManufacturing.MachinesTest do
       assert Machines.linked_operation_overrides(machine.uuid) == %{}
     end
 
-    test "deleting an operation removes its machine links", %{machine: machine, cutting: cutting} do
+    test "trashing an operation does not cascade to its machine links (soft reference, no FK)",
+         %{machine: machine, cutting: cutting} do
       {:ok, :synced} = Machines.sync_machine_operations(machine.uuid, %{cutting.uuid => nil})
-      {:ok, _} = Operations.delete_operation(cutting)
-      assert Machines.linked_operation_overrides(machine.uuid) == %{}
+
+      {:ok, _} = EntityData.trash(cutting)
+      EntitiesRegistry.reload()
+
+      # No FK/cascade as of the entities migration (see
+      # ENTITIES_MIGRATION_SPEC.md §5 risk #1) — the link row is a dangling
+      # soft reference, not removed by the trash; `list_machine_operations/1`
+      # reports a `nil` `:operation` for it (see its moduledoc).
+      assert Machines.linked_operation_overrides(machine.uuid) == %{cutting.uuid => nil}
+
+      assert [%{operation: nil, time_norm_seconds: nil}] =
+               Machines.list_machine_operations(machine.uuid)
     end
   end
 
@@ -405,4 +415,39 @@ defmodule PhoenixKitManufacturing.MachinesTest do
     EntitiesRegistry.reload()
     record
   end
+
+  # Same rationale as `create_machine_type!/1` — `operation` CRUD moved to
+  # the generic entities admin UI, so tests build the `operation`
+  # `entity_data` record directly. `unit`/`base_time_norm_seconds` are
+  # non-translatable custom fields (see `Migrations.Machines`'
+  # `@blueprint_directories`), so they land unprefixed in the
+  # primary-language data block, not under a `_`-prefixed translatable key
+  # (see `EntitiesRegistry`'s "Record shape" moduledoc).
+  defp create_operation!(attrs) do
+    entity =
+      Entities.get_entity_by_name("operation") ||
+        raise "operation entity not seeded — check Migrations.Machines V5"
+
+    name = Map.fetch!(attrs, :name)
+    primary = Multilang.primary_language()
+
+    primary_block =
+      %{"_title" => name}
+      |> put_present("unit", Map.get(attrs, :unit))
+      |> put_present("base_time_norm_seconds", Map.get(attrs, :base_time_norm_seconds))
+
+    {:ok, record} =
+      EntityData.create(%{
+        entity_uuid: entity.uuid,
+        title: name,
+        status: Map.get(attrs, :status, "published"),
+        data: %{"_primary_language" => primary, primary => primary_block}
+      })
+
+    EntitiesRegistry.reload()
+    record
+  end
+
+  defp put_present(map, _key, nil), do: map
+  defp put_present(map, key, value), do: Map.put(map, key, value)
 end
