@@ -7,9 +7,11 @@ defmodule PhoenixKitManufacturing.EntitiesRegistry do
   consistent snapshot.
 
   Modeled 1:1 on `Andi.Orders.StatusRegistry`. The three "blueprint"
-  entities are provisioned by this registry's own idempotent `init/1` — see
-  below (also `dev_docs/ENTITIES_MIGRATION_SPEC.md` for the original design
-  rationale).
+  entities (`machine_type`/`operation`/`defect_reason`) are provisioned
+  idempotently by `provision_blueprints/0`, retried at the top of every
+  reload (starting with `init/1`'s own) until all three are confirmed
+  present — see below (also `dev_docs/ENTITIES_MIGRATION_SPEC.md` for the
+  original design rationale).
 
   Not wired into `children/0` by this module alone — see
   `PhoenixKitManufacturing.children/0` for supervision-tree wiring.
@@ -66,6 +68,7 @@ defmodule PhoenixKitManufacturing.EntitiesRegistry do
   require Logger
 
   alias PhoenixKit.Modules.Languages.DialectMapper
+  alias PhoenixKit.Users.Auth
   alias PhoenixKit.Utils.Multilang
   alias PhoenixKitEntities, as: Entities
   alias PhoenixKitEntities.EntityData
@@ -78,6 +81,72 @@ defmodule PhoenixKitManufacturing.EntitiesRegistry do
     defect_reason: "defect_reason"
   }
   @kinds [:machine_type, :operation, :defect_reason]
+
+  # Blueprint entity definitions provisioned idempotently by
+  # `provision_blueprints/0` below. Ported from the module's own pre-V143
+  # migration (`Migrations.Machines` V5, since removed — see
+  # `dev_docs/LEGACY_DATA_MIGRATION.md`); the entities themselves live in
+  # PhoenixKit core's entities system (`phoenix_kit_entities`, migration
+  # V17), not this module's own tables.
+  @blueprint_directories [
+    %{
+      name: "machine_type",
+      display_name: "Machine Type",
+      display_name_plural: "Machine Types",
+      icon: "hero-tag",
+      fields_definition: [
+        %{
+          "type" => "textarea",
+          "key" => "description",
+          "label" => "Description",
+          "translatable" => true
+        }
+      ],
+      translations: %{
+        "ru" => %{"display_name" => "Тип станка", "display_name_plural" => "Типы станков"},
+        "et" => %{"display_name" => "Masinatüüp", "display_name_plural" => "Masinatüübid"}
+      }
+    },
+    %{
+      name: "operation",
+      display_name: "Operation",
+      display_name_plural: "Operations",
+      icon: "hero-clock",
+      fields_definition: [
+        %{"type" => "text", "key" => "unit", "label" => "Unit"},
+        %{
+          "type" => "number",
+          "key" => "base_time_norm_seconds",
+          "label" => "Base time norm (seconds)"
+        }
+      ],
+      translations: %{
+        "ru" => %{"display_name" => "Операция", "display_name_plural" => "Операции"},
+        "et" => %{"display_name" => "Toiming", "display_name_plural" => "Toimingud"}
+      }
+    },
+    %{
+      name: "defect_reason",
+      display_name: "Defect Reason",
+      display_name_plural: "Defect Reasons",
+      icon: "hero-exclamation-triangle",
+      fields_definition: [
+        %{
+          "type" => "textarea",
+          "key" => "description",
+          "label" => "Description",
+          "translatable" => true
+        }
+      ],
+      translations: %{
+        "ru" => %{
+          "display_name" => "Причина брака",
+          "display_name_plural" => "Причины брака"
+        },
+        "et" => %{"display_name" => "Praagi põhjus", "display_name_plural" => "Praagi põhjused"}
+      }
+    }
+  ]
 
   @type kind :: :machine_type | :operation | :defect_reason
   @type record :: %{
@@ -191,39 +260,41 @@ defmodule PhoenixKitManufacturing.EntitiesRegistry do
     :ets.new(@table, [:named_table, :public, read_concurrency: true])
     Events.subscribe_to_all_data()
     Events.subscribe_to_entities()
-    do_reload()
-    {:ok, %{}}
+    {:ok, %{blueprints_provisioned: do_reload(false)}}
   end
 
   @impl true
   def handle_call(:reload, _from, state) do
-    do_reload()
-    {:reply, :ok, state}
+    {:reply, :ok, %{state | blueprints_provisioned: do_reload(state.blueprints_provisioned)}}
   end
 
   @impl true
   def handle_info({event, _entity_uuid, _data_uuid}, state)
       when event in [:data_created, :data_updated, :data_deleted] do
-    do_reload()
-    {:noreply, state}
+    {:noreply, %{state | blueprints_provisioned: do_reload(state.blueprints_provisioned)}}
   end
 
   def handle_info({:data_reordered, _entity_uuid}, state) do
-    do_reload()
-    {:noreply, state}
+    {:noreply, %{state | blueprints_provisioned: do_reload(state.blueprints_provisioned)}}
   end
 
   def handle_info({event, _entity_uuid}, state)
       when event in [:entity_created, :entity_updated, :entity_deleted] do
-    do_reload()
-    {:noreply, state}
+    {:noreply, %{state | blueprints_provisioned: do_reload(state.blueprints_provisioned)}}
   end
 
   def handle_info(_msg, state), do: {:noreply, state}
 
   ## Internal ##
 
-  defp do_reload do
+  # `blueprints_provisioned` is `false` until `provision_blueprints/0` has
+  # confirmed all three blueprint entities exist; while `false`, every
+  # reload retries provisioning first (see `provision_blueprints/0`).
+  # Returns the (possibly now-`true`) flag for the caller to store back in
+  # GenServer state.
+  defp do_reload(blueprints_provisioned) do
+    blueprints_provisioned = blueprints_provisioned or provision_blueprints()
+
     payload = Enum.flat_map(@entity_names, fn {kind, name} -> build_kind(kind, name) end)
     new_keys = MapSet.new(payload, fn {k, _v} -> k end)
 
@@ -242,6 +313,97 @@ defmodule PhoenixKitManufacturing.EntitiesRegistry do
         true -> :ets.delete(@table, k)
       end
     end)
+
+    blueprints_provisioned
+  end
+
+  # Idempotently creates the machine_type/operation/defect_reason blueprint
+  # entities this module's directories are backed by, so a fresh host needs
+  # no separate seed step. Called from `do_reload/1` above on every reload
+  # until all three are confirmed present: a host can boot with zero
+  # PhoenixKit users (see `resolve_creator_uuid/0`) or before core has
+  # migrated the entities tables, both transient conditions — this
+  # passively retries on the next reload (PubSub-triggered, or an explicit
+  # `reload/0` call) rather than raising or wiring up an active retry hook.
+  #
+  # Wrapped so no outcome ever blocks GenServer/supervision-tree startup —
+  # mirrors this module's `Postgrex.Error :undefined_table` convention
+  # (see `Machines.maybe_log_activity/5`) plus the sandbox-owner-exited
+  # `catch :exit` from `PhoenixKitManufacturing.enabled?/0`.
+  defp provision_blueprints do
+    case resolve_creator_uuid() do
+      {:ok, creator_uuid} ->
+        @blueprint_directories
+        |> Enum.map(&ensure_blueprint_entity(&1, creator_uuid))
+        |> Enum.all?(&match?({:ok, _}, &1))
+
+      :no_users ->
+        false
+    end
+  rescue
+    e in Postgrex.Error ->
+      unless match?(%{postgres: %{code: :undefined_table}}, e) do
+        Logger.warning("EntitiesRegistry: blueprint provisioning failed: #{Exception.message(e)}")
+      end
+
+      false
+
+    e ->
+      Logger.warning("EntitiesRegistry: blueprint provisioning error: #{Exception.message(e)}")
+      false
+  catch
+    :exit, _ -> false
+  end
+
+  # Resolves who newly-provisioned blueprint entities are attributed to.
+  # `:no_users` on a host with none yet (fresh install, before the first
+  # admin signs up) — `provision_blueprints/0` skips this pass and retries
+  # on the next `do_reload/1`.
+  defp resolve_creator_uuid do
+    case Auth.get_first_admin_uuid() || Auth.get_first_user_uuid() do
+      nil -> :no_users
+      uuid -> {:ok, uuid}
+    end
+  end
+
+  # Idempotent: returns the existing entity by name if the blueprint was
+  # already provisioned by an earlier pass (this process or a concurrent
+  # one).
+  defp ensure_blueprint_entity(spec, creator_uuid) do
+    case Entities.get_entity_by_name(spec.name) do
+      nil -> create_blueprint_entity(spec, creator_uuid)
+      existing -> {:ok, existing}
+    end
+  end
+
+  # No hard `{:ok, _}` match on `create_entity/1`: `phoenix_kit_entities`'
+  # unique index on `name` (`phoenix_kit_entities_name_uidx`, core V17)
+  # means a concurrent provisioner (e.g. two app nodes booting at once)
+  # can win the insert first, turning ours into `{:error, changeset}`
+  # rather than a crash — re-fetch to pick up whatever now exists instead
+  # of trusting our own insert succeeded.
+  defp create_blueprint_entity(spec, creator_uuid) do
+    case Entities.create_entity(%{
+           name: spec.name,
+           display_name: spec.display_name,
+           display_name_plural: spec.display_name_plural,
+           icon: spec.icon,
+           fields_definition: spec.fields_definition,
+           created_by_uuid: creator_uuid
+         }) do
+      {:ok, entity} ->
+        Enum.each(spec.translations, fn {lang, attrs} ->
+          Entities.set_entity_translation(entity, lang, attrs)
+        end)
+
+        {:ok, entity}
+
+      {:error, _changeset} ->
+        case Entities.get_entity_by_name(spec.name) do
+          nil -> :error
+          existing -> {:ok, existing}
+        end
+    end
   end
 
   defp build_kind(kind, entity_name) do
