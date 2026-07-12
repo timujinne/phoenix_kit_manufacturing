@@ -134,32 +134,16 @@ defmodule PhoenixKitManufacturingTest do
                {PhoenixKitManufacturing.Web.MachinesLive, :defect_reasons}
     end
 
-    test "includes hidden New/Edit Operation tabs pointing to OperationFormLive" do
+    test "does not include the removed Type/Operation/Defect-Reason New/Edit tabs" do
       tabs = PhoenixKitManufacturing.admin_tabs()
-      new_tab = Enum.find(tabs, &(&1.id == :manufacturing_operation_new))
-      edit_tab = Enum.find(tabs, &(&1.id == :manufacturing_operation_edit))
+      ids = Enum.map(tabs, & &1.id)
 
-      assert new_tab.path == "manufacturing/machines/operations/new"
-      assert new_tab.visible == false
-      assert new_tab.live_view == {PhoenixKitManufacturing.Web.OperationFormLive, :new}
-
-      assert edit_tab.path == "manufacturing/machines/operations/:uuid/edit"
-      assert edit_tab.visible == false
-      assert edit_tab.live_view == {PhoenixKitManufacturing.Web.OperationFormLive, :edit}
-    end
-
-    test "includes hidden New/Edit Defect Reason tabs pointing to DefectReasonFormLive" do
-      tabs = PhoenixKitManufacturing.admin_tabs()
-      new_tab = Enum.find(tabs, &(&1.id == :manufacturing_defect_reason_new))
-      edit_tab = Enum.find(tabs, &(&1.id == :manufacturing_defect_reason_edit))
-
-      assert new_tab.path == "manufacturing/machines/defect-reasons/new"
-      assert new_tab.visible == false
-      assert new_tab.live_view == {PhoenixKitManufacturing.Web.DefectReasonFormLive, :new}
-
-      assert edit_tab.path == "manufacturing/machines/defect-reasons/:uuid/edit"
-      assert edit_tab.visible == false
-      assert edit_tab.live_view == {PhoenixKitManufacturing.Web.DefectReasonFormLive, :edit}
+      refute :manufacturing_type_new in ids
+      refute :manufacturing_operation_new in ids
+      refute :manufacturing_defect_reason_new in ids
+      refute :manufacturing_type_edit in ids
+      refute :manufacturing_operation_edit in ids
+      refute :manufacturing_defect_reason_edit in ids
     end
 
     test "includes hidden Machine Operations/Files/Comments tabs pointing to MachineFormLive" do
@@ -234,20 +218,20 @@ defmodule PhoenixKitManufacturingTest do
       assert Tab.matches_path?(machines_tab, "manufacturing/machines/#{uuid}/comments")
     end
 
-    test "the wildcard :uuid defect-reason-edit route is the last tab" do
+    test "the wildcard :uuid machine-comments route is the last tab" do
       tabs = PhoenixKitManufacturing.admin_tabs()
       last = List.last(tabs)
-      assert last.id == :manufacturing_defect_reason_edit
-      assert last.path == "manufacturing/machines/defect-reasons/:uuid/edit"
+      assert last.id == :manufacturing_machine_comments
+      assert last.path == "manufacturing/machines/:uuid/comments"
 
-      # The machine card's hidden tab routes (also :uuid-wildcard, see
+      # The other machine-card hidden tab routes (also :uuid-wildcard, see
       # Web.MachineFormLive's moduledoc "Tabs") must sit somewhere before
       # the final tab too — same "wildcard routes last as a block" ordering
       # convention as manufacturing_machine_edit itself.
       for id <- [
+            :manufacturing_machine_edit,
             :manufacturing_machine_operations,
-            :manufacturing_machine_files,
-            :manufacturing_machine_comments
+            :manufacturing_machine_files
           ] do
         index = Enum.find_index(tabs, &(&1.id == id))
         assert index, "expected #{id} to be present in admin_tabs/0"

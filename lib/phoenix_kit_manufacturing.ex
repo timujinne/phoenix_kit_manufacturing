@@ -199,63 +199,7 @@ defmodule PhoenixKitManufacturing do
         visible: false,
         live_view: {PhoenixKitManufacturing.Web.MachineFormLive, :new}
       },
-      %Tab{
-        id: :manufacturing_type_new,
-        label: "New Type",
-        gettext_backend: PhoenixKitManufacturing.Gettext,
-        gettext_domain: "default",
-        icon: "hero-plus",
-        path: "manufacturing/machines/types/new",
-        priority: 160,
-        level: :admin,
-        permission: module_key(),
-        parent: :manufacturing,
-        visible: false,
-        live_view: {PhoenixKitManufacturing.Web.MachineTypeFormLive, :new}
-      },
-      %Tab{
-        id: :manufacturing_operation_new,
-        label: "New Operation",
-        gettext_backend: PhoenixKitManufacturing.Gettext,
-        gettext_domain: "default",
-        icon: "hero-plus",
-        path: "manufacturing/machines/operations/new",
-        priority: 161,
-        level: :admin,
-        permission: module_key(),
-        parent: :manufacturing,
-        visible: false,
-        live_view: {PhoenixKitManufacturing.Web.OperationFormLive, :new}
-      },
-      %Tab{
-        id: :manufacturing_defect_reason_new,
-        label: "New Defect Reason",
-        gettext_backend: PhoenixKitManufacturing.Gettext,
-        gettext_domain: "default",
-        icon: "hero-plus",
-        path: "manufacturing/machines/defect-reasons/new",
-        priority: 166,
-        level: :admin,
-        permission: module_key(),
-        parent: :manufacturing,
-        visible: false,
-        live_view: {PhoenixKitManufacturing.Web.DefectReasonFormLive, :new}
-      },
       # Wildcard :uuid routes LAST.
-      %Tab{
-        id: :manufacturing_type_edit,
-        label: "Edit Type",
-        gettext_backend: PhoenixKitManufacturing.Gettext,
-        gettext_domain: "default",
-        icon: "hero-pencil-square",
-        path: "manufacturing/machines/types/:uuid/edit",
-        priority: 162,
-        level: :admin,
-        permission: module_key(),
-        parent: :manufacturing,
-        visible: false,
-        live_view: {PhoenixKitManufacturing.Web.MachineTypeFormLive, :edit}
-      },
       %Tab{
         id: :manufacturing_machine_edit,
         label: "Edit Machine",
@@ -315,34 +259,6 @@ defmodule PhoenixKitManufacturing do
         parent: :manufacturing,
         visible: false,
         live_view: {PhoenixKitManufacturing.Web.MachineFormLive, :comments}
-      },
-      %Tab{
-        id: :manufacturing_operation_edit,
-        label: "Edit Operation",
-        gettext_backend: PhoenixKitManufacturing.Gettext,
-        gettext_domain: "default",
-        icon: "hero-pencil-square",
-        path: "manufacturing/machines/operations/:uuid/edit",
-        priority: 164,
-        level: :admin,
-        permission: module_key(),
-        parent: :manufacturing,
-        visible: false,
-        live_view: {PhoenixKitManufacturing.Web.OperationFormLive, :edit}
-      },
-      %Tab{
-        id: :manufacturing_defect_reason_edit,
-        label: "Edit Defect Reason",
-        gettext_backend: PhoenixKitManufacturing.Gettext,
-        gettext_domain: "default",
-        icon: "hero-pencil-square",
-        path: "manufacturing/machines/defect-reasons/:uuid/edit",
-        priority: 167,
-        level: :admin,
-        permission: module_key(),
-        parent: :manufacturing,
-        visible: false,
-        live_view: {PhoenixKitManufacturing.Web.DefectReasonFormLive, :edit}
       }
     ]
   end
