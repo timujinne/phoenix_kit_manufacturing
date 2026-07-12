@@ -223,6 +223,17 @@ defmodule PhoenixKitManufacturingTest do
              )
     end
 
+    test "the Machines tab's regex match still highlights the machine card's Operations/Files/Comments subtabs" do
+      machines_tab =
+        Enum.find(PhoenixKitManufacturing.admin_tabs(), &(&1.id == :manufacturing_machines))
+
+      uuid = "018f0000-0000-7000-8000-000000000000"
+
+      assert Tab.matches_path?(machines_tab, "manufacturing/machines/#{uuid}/operations")
+      assert Tab.matches_path?(machines_tab, "manufacturing/machines/#{uuid}/files")
+      assert Tab.matches_path?(machines_tab, "manufacturing/machines/#{uuid}/comments")
+    end
+
     test "the wildcard :uuid defect-reason-edit route is the last tab" do
       tabs = PhoenixKitManufacturing.admin_tabs()
       last = List.last(tabs)

@@ -132,10 +132,13 @@ defmodule PhoenixKitManufacturing do
         priority: 156,
         level: :admin,
         permission: module_key(),
-        # Match the list page + its own sub-pages (new / edit) but NOT the
-        # sibling `machines/types*` subtree. A bare `:prefix` would swallow
-        # types; `:exact` misses /new and /:uuid/edit.
-        match: {:regex, ~r{(?:^|/)manufacturing/machines(?:/new|/[^/]+/edit)?$}},
+        # Match the list page + its own sub-pages (new / edit / the machine
+        # card's operations/files/comments subtabs) but NOT the sibling
+        # `machines/types*` subtree. A bare `:prefix` would swallow types;
+        # `:exact` misses /new and /:uuid/edit (and the card subtabs).
+        match:
+          {:regex,
+           ~r{(?:^|/)manufacturing/machines(?:/new|/[^/]+/(?:edit|operations|files|comments))?$}},
         parent: :manufacturing,
         live_view: {PhoenixKitManufacturing.Web.MachinesLive, :index}
       },
