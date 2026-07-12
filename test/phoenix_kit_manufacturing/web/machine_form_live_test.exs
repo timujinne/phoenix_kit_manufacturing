@@ -207,6 +207,23 @@ defmodule PhoenixKitManufacturing.Web.MachineFormLiveTest do
       assert is_binary(html)
     end
 
+    test "when comments are enabled, the Comments tab link is shown and deep-linking to it renders as active",
+         %{conn: conn} do
+      {:ok, _} = PhoenixKitComments.enable_system()
+      on_exit(fn -> PhoenixKitComments.disable_system() end)
+
+      {:ok, machine} = Machines.create_machine(%{name: "CNC-52b"})
+      conn = put_test_scope(conn, fake_scope())
+      {:ok, view, _html} = live(conn, edit_path(machine))
+
+      assert has_element?(view, "a", "Comments")
+
+      render_patch(view, comments_path(machine))
+
+      assert has_element?(view, "a.tab-active", "Comments")
+      refute has_element?(view, "a.tab-active", "General")
+    end
+
     test "a non-existent machine's tab route flashes and redirects to the machines list", %{
       conn: conn
     } do
