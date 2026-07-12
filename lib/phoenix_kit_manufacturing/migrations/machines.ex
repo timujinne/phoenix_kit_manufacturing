@@ -925,15 +925,19 @@ defmodule PhoenixKitManufacturing.Migrations.Machines do
     end
   end
 
-  # Parameterized `UPDATE` (not `execute/1`, which has no bind-param
-  # support) — uuid columns round-trip through `Ecto.UUID.dump!/1` since
-  # raw Postgrex encodes/decodes `uuid` as a 16-byte binary, not the
-  # dashed string form every uuid in `mapping` is already in.
+  # MUST go through `execute/1` (the migration's own transactional
+  # connection), NOT `repo().query!` — the host-generated wrapper runs this
+  # whole migration inside a transaction, and a pool connection would not
+  # see the uncommitted `drop_fk_constraint` above, failing the UPDATE with
+  # a foreign-key violation (caught live on the first real V4→V5 upgrade
+  # rehearsal). `execute/1` has no bind params; interpolation is safe here
+  # because every uuid in `mapping` is canonical dashed-hex output of
+  # `Ecto.UUID.load!/1`, and we cast explicitly with `::uuid`.
   defp rewire_references(p, table, column, mapping) do
     Enum.each(mapping, fn {old_uuid, new_uuid} ->
-      PhoenixKit.RepoHelper.repo().query!(
-        "UPDATE #{p}#{table} SET #{column} = $2 WHERE #{column} = $1",
-        [Ecto.UUID.dump!(old_uuid), Ecto.UUID.dump!(new_uuid)]
+      execute(
+        "UPDATE #{p}#{table} SET #{column} = '#{new_uuid}'::uuid " <>
+          "WHERE #{column} = '#{old_uuid}'::uuid"
       )
     end)
   end
