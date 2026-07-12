@@ -338,6 +338,10 @@ defmodule PhoenixKitManufacturing.EntitiesRegistry do
         |> Enum.all?(&match?({:ok, _}, &1))
 
       :no_users ->
+        Logger.warning(
+          "EntitiesRegistry: no PhoenixKit users yet — deferring blueprint provisioning"
+        )
+
         false
     end
   rescue
