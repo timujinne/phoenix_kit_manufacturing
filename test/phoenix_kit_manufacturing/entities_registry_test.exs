@@ -13,26 +13,21 @@ defmodule PhoenixKitManufacturing.EntitiesRegistryTest do
   setup do
     start_supervised!(EntitiesRegistry)
 
-    {:ok, machine_type} =
-      Entities.create_entity(%{
-        name: "machine_type",
-        display_name: "Machine Type",
-        display_name_plural: "Machine Types",
-        fields_definition: [],
-        created_by_uuid: Ecto.UUID.generate()
-      })
+    # `Migrations.Machines` V5 (run once, unsandboxed, by `test_helper.exs`
+    # before `ExUnit.start/1`) already seeds a permanent "machine_type" /
+    # "operation" / "defect_reason" blueprint entity into the test
+    # database's real committed data — `Entities.create_entity/2` would hit
+    # its `unique_constraint(:name)` and return `{:error, changeset}` if
+    # called again with the same name here. Reuse the existing entity
+    # instead, same idempotent lookup the migration's own
+    # `ensure_blueprint_entity/2` does.
+    machine_type = ensure_entity!("machine_type", [])
 
-    {:ok, operation} =
-      Entities.create_entity(%{
-        name: "operation",
-        display_name: "Operation",
-        display_name_plural: "Operations",
-        fields_definition: [
-          %{"type" => "text", "key" => "unit", "label" => "Unit"},
-          %{"type" => "number", "key" => "base_time_norm_seconds", "label" => "Base time norm"}
-        ],
-        created_by_uuid: Ecto.UUID.generate()
-      })
+    operation =
+      ensure_entity!("operation", [
+        %{"type" => "text", "key" => "unit", "label" => "Unit"},
+        %{"type" => "number", "key" => "base_time_norm_seconds", "label" => "Base time norm"}
+      ])
 
     %{machine_type: machine_type, operation: operation}
   end
@@ -238,5 +233,18 @@ defmodule PhoenixKitManufacturing.EntitiesRegistryTest do
 
   defp multilang_data(primary_locale, blocks) do
     Map.put(blocks, "_primary_language", primary_locale)
+  end
+
+  defp ensure_entity!(name, fields_definition) do
+    Entities.get_entity_by_name(name) ||
+      case Entities.create_entity(%{
+             name: name,
+             display_name: name,
+             display_name_plural: name,
+             fields_definition: fields_definition,
+             created_by_uuid: Ecto.UUID.generate()
+           }) do
+        {:ok, entity} -> entity
+      end
   end
 end

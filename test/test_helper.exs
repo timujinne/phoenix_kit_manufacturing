@@ -32,6 +32,25 @@ support_dir = Path.expand("support", __DIR__)
 ]
 |> Enum.each(&Code.require_file(&1, support_dir))
 
+# Start minimal PhoenixKit services *before* touching the database. The
+# module migration below (`Migrations.Machines.up/1`, via
+# `Ecto.Migrator.up/4` further down) provisions `phoenix_kit_entities`
+# blueprint records, and `PhoenixKitEntities.Entities.create_entity/2` /
+# `EntityData.create/2` unconditionally broadcast a PubSub event on
+# success (`PhoenixKitEntities.Events`, routed through
+# `PhoenixKit.PubSub.Manager`). `Phoenix.PubSub.broadcast/3` raises
+# `ArgumentError` ("unknown registry: :phoenix_kit_internal_pubsub") when
+# that named PubSub isn't started yet — which, before this reorder, was
+# the case here (`PubSub.Manager` used to start *after* the migration ran
+# below), so every real-database `mix test` run hit that raise inside the
+# `try` block below, got caught by its `rescue`, and silently mis-reported
+# "could not connect to test database" — excluding every `:integration`
+# test even with Postgres up and reachable. `ModuleRegistry` has no such
+# ordering constraint but is started alongside it for the same reason the
+# two were already grouped together.
+{:ok, _pid} = PhoenixKit.PubSub.Manager.start_link([])
+{:ok, _pid} = PhoenixKit.ModuleRegistry.start_link([])
+
 # Check if the test database exists.
 db_name =
   Application.get_env(:phoenix_kit_manufacturing, PhoenixKitManufacturing.Test.Repo)[:database] ||
@@ -152,11 +171,6 @@ repo_available =
   end
 
 Application.put_env(:phoenix_kit_manufacturing, :test_repo_available, repo_available)
-
-# Start minimal PhoenixKit services so the module's runtime dependencies
-# (PubSub topics, ModuleRegistry) resolve during tests.
-{:ok, _pid} = PhoenixKit.PubSub.Manager.start_link([])
-{:ok, _pid} = PhoenixKit.ModuleRegistry.start_link([])
 
 # Exclude integration tests when the DB is not available.
 exclude = if repo_available, do: [], else: [:integration]
