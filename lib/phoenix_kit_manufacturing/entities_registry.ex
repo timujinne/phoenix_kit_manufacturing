@@ -8,10 +8,21 @@ defmodule PhoenixKitManufacturing.EntitiesRegistry do
 
   Modeled 1:1 on `Andi.Orders.StatusRegistry`. The three "blueprint"
   entities (`machine_type`/`operation`/`defect_reason`) are provisioned
-  idempotently by `provision_blueprints/0`, retried at the top of every
-  reload (starting with `init/1`'s own) until all three are confirmed
-  present — see below (also `dev_docs/ENTITIES_MIGRATION_SPEC.md` for the
-  original design rationale).
+  idempotently by `provision_blueprints/0`, retried until all three are
+  confirmed present. Two retry paths run in parallel:
+
+    * **Event-driven**: every reload (triggered by a PubSub event or an
+      explicit `reload/0` call) retries provisioning at the top of
+      `do_reload/1`.
+    * **Timer-driven**: while `blueprints_provisioned` is `false`,
+      `init/1` and each failed attempt schedule a
+      `Process.send_after(self(), :retry_provision, @retry_provision_interval)`
+      (default 30 s). `handle_info(:retry_provision, ...)` retries and
+      reschedules if still not provisioned, and is a no-op once provisioned.
+      This guarantees the subtabs become available even on a host that boots
+      with no users and receives no entities PubSub events for a long time.
+
+  See `dev_docs/ENTITIES_MIGRATION_SPEC.md` for the original design rationale.
 
   Not wired into `children/0` by this module alone — see
   `PhoenixKitManufacturing.children/0` for supervision-tree wiring.
@@ -81,6 +92,11 @@ defmodule PhoenixKitManufacturing.EntitiesRegistry do
     defect_reason: "defect_reason"
   }
   @kinds [:machine_type, :operation, :defect_reason]
+
+  # While `blueprints_provisioned` is `false` (no users exist yet, or the
+  # entities tables haven't been migrated), the init/1 and each failed
+  # provisioning attempt schedule a timer to retry after this interval.
+  @retry_provision_interval 30_000
 
   # Blueprint entity definitions provisioned idempotently by
   # `provision_blueprints/0` below. Ported from the module's own pre-V143
@@ -260,7 +276,12 @@ defmodule PhoenixKitManufacturing.EntitiesRegistry do
     :ets.new(@table, [:named_table, :public, read_concurrency: true])
     Events.subscribe_to_all_data()
     Events.subscribe_to_entities()
-    {:ok, %{blueprints_provisioned: do_reload(false)}}
+    provisioned = do_reload(false)
+
+    unless provisioned,
+      do: Process.send_after(self(), :retry_provision, @retry_provision_interval)
+
+    {:ok, %{blueprints_provisioned: provisioned}}
   end
 
   @impl true
@@ -269,18 +290,47 @@ defmodule PhoenixKitManufacturing.EntitiesRegistry do
   end
 
   @impl true
-  def handle_info({event, _entity_uuid, _data_uuid}, state)
+  def handle_info({event, entity_uuid, _data_uuid}, state)
       when event in [:data_created, :data_updated, :data_deleted] do
-    {:noreply, %{state | blueprints_provisioned: do_reload(state.blueprints_provisioned)}}
+    if our_entity?(entity_uuid) do
+      {:noreply, %{state | blueprints_provisioned: do_reload(state.blueprints_provisioned)}}
+    else
+      {:noreply, state}
+    end
   end
 
-  def handle_info({:data_reordered, _entity_uuid}, state) do
-    {:noreply, %{state | blueprints_provisioned: do_reload(state.blueprints_provisioned)}}
+  def handle_info({:data_reordered, entity_uuid}, state) do
+    if our_entity?(entity_uuid) do
+      {:noreply, %{state | blueprints_provisioned: do_reload(state.blueprints_provisioned)}}
+    else
+      {:noreply, state}
+    end
   end
 
   def handle_info({event, _entity_uuid}, state)
       when event in [:entity_created, :entity_updated, :entity_deleted] do
+    # Entity-definition events carry only the entity uuid, not the entity name.
+    # Filtering by uuid would require a DB lookup on every event, and a newly
+    # created entity also isn't in ETS yet. Full reload is kept here; entity-
+    # definition changes are rare in practice.
     {:noreply, %{state | blueprints_provisioned: do_reload(state.blueprints_provisioned)}}
+  end
+
+  # Timer-based retry for blueprint provisioning. Fires every
+  # @retry_provision_interval ms while `blueprints_provisioned` is false.
+  # Once provisioned (via any path), the flag check skips the reload and
+  # stops rescheduling naturally.
+  def handle_info(:retry_provision, %{blueprints_provisioned: true} = state) do
+    {:noreply, state}
+  end
+
+  def handle_info(:retry_provision, state) do
+    provisioned = do_reload(state.blueprints_provisioned)
+
+    unless provisioned,
+      do: Process.send_after(self(), :retry_provision, @retry_provision_interval)
+
+    {:noreply, %{state | blueprints_provisioned: provisioned}}
   end
 
   def handle_info(_msg, state), do: {:noreply, state}
@@ -414,7 +464,7 @@ defmodule PhoenixKitManufacturing.EntitiesRegistry do
     case Entities.get_entity_by_name(entity_name) do
       nil ->
         Logger.info("EntitiesRegistry: entity '#{entity_name}' not yet seeded")
-        [{{:list, kind}, []}]
+        [{{:list, kind}, []}, {{:entity_uuid, kind}, nil}]
 
       entity ->
         records =
@@ -426,8 +476,21 @@ defmodule PhoenixKitManufacturing.EntitiesRegistry do
         list_entry = [{{:list, kind}, records}]
         per_record = Enum.map(records, fn r -> {{:by_uuid, kind, r.uuid}, r} end)
 
-        list_entry ++ per_record
+        # Store entity uuid so data-event handle_info can filter cheaply.
+        [{{:entity_uuid, kind}, entity.uuid}] ++ list_entry ++ per_record
     end
+  end
+
+  # Returns true when `entity_uuid` is the uuid of one of our three blueprint
+  # entities (machine_type / operation / defect_reason) as last known to ETS.
+  # Used to skip full reloads for data events belonging to unrelated entities.
+  defp our_entity?(entity_uuid) do
+    Enum.any?(@kinds, fn kind ->
+      case :ets.lookup(@table, {:entity_uuid, kind}) do
+        [{_, ^entity_uuid}] -> true
+        _ -> false
+      end
+    end)
   end
 
   defp to_record(%EntityData{} = d, entity_name) do
