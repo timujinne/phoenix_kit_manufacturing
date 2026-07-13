@@ -38,10 +38,12 @@ mix precommit               # compile (warnings-as-errors) + deps.unlock check +
 `phoenix_kit` resolves from Hex by default. To build/test against a **local
 checkout** of core (e.g. an unpublished change), export `PHOENIX_KIT_PATH`
 and Mix swaps the Hex pin for a `path:` + `override: true` dep at resolve
-time:
+time. `phoenix_kit_locations` likewise needs `PHOENIX_KIT_LOCATIONS_PATH`
+when the published Hex version doesn't yet include the `PlacePicker` /
+`Spaces.full_path` additions used by this module:
 
 ```bash
-PHOENIX_KIT_PATH=../phoenix_kit mix test
+PHOENIX_KIT_PATH=../phoenix_kit PHOENIX_KIT_LOCATIONS_PATH=../phoenix_kit_locations mix test
 ```
 
 Unset ⇒ the published pin, so `mix hex.publish` and CI resolve exactly as
@@ -142,7 +144,7 @@ publishes a Hex release containing V143**, that means integration tests
 need a local core checkout with V143 on it, not just the Hex pin:
 
 ```bash
-PHOENIX_KIT_PATH=../phoenix_kit mix test
+PHOENIX_KIT_PATH=../phoenix_kit PHOENIX_KIT_LOCATIONS_PATH=../phoenix_kit_locations mix test
 ```
 
 (see "Local cross-repo development" above; point it at a checkout of

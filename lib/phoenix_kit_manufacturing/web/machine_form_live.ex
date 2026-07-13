@@ -993,6 +993,7 @@ defmodule PhoenixKitManufacturing.Web.MachineFormLive do
       |> assign(:field_name, "machine[metadata][#{key}]")
       |> assign(:raw_value, Map.get(metadata, key, ""))
       |> assign(:select_options, Enum.map(options, &{&1, &1}))
+      |> assign(:from_type, template_row(assigns.row, :_from_type))
       |> assign(
         :label,
         field_label(
@@ -1003,19 +1004,24 @@ defmodule PhoenixKitManufacturing.Web.MachineFormLive do
       )
 
     ~H"""
-    <.input :if={@kind == :text} type="text" name={@field_name} value={@raw_value} label={@label} />
-    <.input :if={@kind == :number} type="number" name={@field_name} value={@raw_value} label={@label} />
-    <.input :if={@kind == :date} type="date" name={@field_name} value={@raw_value} label={@label} />
-    <.select
-      :if={@kind == :select}
-      name={@field_name}
-      value={@raw_value}
-      label={@label}
-      options={@select_options}
-      prompt="—"
-    />
-    <div :if={@kind == :boolean} class="flex items-end pb-2">
-      <.checkbox name={@field_name} checked={@raw_value in [true, "true"]} label={@label} />
+    <div>
+      <.input :if={@kind == :text} type="text" name={@field_name} value={@raw_value} label={@label} />
+      <.input :if={@kind == :number} type="number" name={@field_name} value={@raw_value} label={@label} />
+      <.input :if={@kind == :date} type="date" name={@field_name} value={@raw_value} label={@label} />
+      <.select
+        :if={@kind == :select}
+        name={@field_name}
+        value={@raw_value}
+        label={@label}
+        options={@select_options}
+        prompt="—"
+      />
+      <div :if={@kind == :boolean} class="flex items-end pb-2">
+        <.checkbox name={@field_name} checked={@raw_value in [true, "true"]} label={@label} />
+      </div>
+      <p :if={@from_type} class="text-xs text-base-content/50 mt-1">
+        {gettext("from %{type}", type: @from_type)}
+      </p>
     </div>
     """
   end

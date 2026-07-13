@@ -591,13 +591,35 @@ defmodule PhoenixKitManufacturing.Machines do
   def merged_field_template(type_uuids) when is_list(type_uuids) do
     wanted = MapSet.new(type_uuids)
 
-    {rows, _seen_keys} =
+    types =
       :machine_type
       |> EntitiesRegistry.list(nil, status: "published")
       |> Enum.filter(&MapSet.member?(wanted, &1.uuid))
-      |> Enum.reduce({[], MapSet.new()}, &merge_field_template_rows/2)
+
+    # Identify keys defined by more than one linked type: the winning row
+    # gets a `"_from_type"` hint so callers can surface which type it came
+    # from (see doc above). Keys unique to one type need no hint.
+    colliding_keys = find_colliding_keys(types)
+
+    {rows, _seen_keys} =
+      Enum.reduce(types, {[], MapSet.new()}, fn type, acc ->
+        merge_field_template_rows(type, colliding_keys, acc)
+      end)
 
     Enum.reverse(rows)
+  end
+
+  # Collects every field-template key across all linked types and returns
+  # the set of keys claimed by two or more types.
+  defp find_colliding_keys(types) do
+    types
+    |> Enum.flat_map(fn type ->
+      field_template = Map.get(type.metadata || %{}, "field_template") || []
+      Enum.map(field_template, &field_template_row_key/1)
+    end)
+    |> Enum.frequencies()
+    |> Enum.filter(fn {_key, count} -> count > 1 end)
+    |> MapSet.new(fn {key, _} -> key end)
   end
 
   # `field_template` lives in `metadata` (not `data`) as of the entities
@@ -605,20 +627,32 @@ defmodule PhoenixKitManufacturing.Machines do
   # for why (the generic entities form replaces the whole primary-language
   # `data` block on every save, which would silently drop an undeclared
   # key living there).
-  defp merge_field_template_rows(%{metadata: metadata}, acc) do
+  defp merge_field_template_rows(%{metadata: metadata, name: type_name}, colliding_keys, acc) do
     field_template = Map.get(metadata, "field_template") || []
-    Enum.reduce(field_template, acc, &accumulate_field_template_row/2)
+
+    Enum.reduce(
+      field_template,
+      acc,
+      &accumulate_field_template_row(&1, &2, type_name, colliding_keys)
+    )
   end
 
   # "First wins": a row is only added if its key hasn't been contributed by
   # an earlier (in registry order) type already — see the
   # `merged_field_template/1` doc for why collisions aren't an error.
-  defp accumulate_field_template_row(row, {rows, seen_keys}) do
+  # Winning rows whose key is contested across types get a `"_from_type"`
+  # annotation so the renderer can show a "from <type name>" hint.
+  defp accumulate_field_template_row(row, {rows, seen_keys}, type_name, colliding_keys) do
     key = field_template_row_key(row)
 
     if MapSet.member?(seen_keys, key) do
       {rows, seen_keys}
     else
+      row =
+        if MapSet.member?(colliding_keys, key),
+          do: Map.put(row, "_from_type", type_name),
+          else: row
+
       {[row | rows], MapSet.put(seen_keys, key)}
     end
   end
