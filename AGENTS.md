@@ -139,16 +139,19 @@ moduledoc for the mechanics).
 
 The test suite builds its schema by running core's versioned migrations
 directly via `PhoenixKit.Migration.ensure_current/2` in
-`test/test_helper.exs` — no module-owned DDL. **Until phoenix_kit core
-publishes a Hex release containing V143**, that means integration tests
-need a local core checkout with V143 on it, not just the Hex pin:
+`test/test_helper.exs` — no module-owned DDL. V143 ships in phoenix_kit
+≥ 1.7.189 on Hex, so the plain pins are sufficient:
+
+```bash
+mix test
+```
+
+To test against unpublished local checkouts instead, use the env-var
+swap from "Local cross-repo development" above:
 
 ```bash
 PHOENIX_KIT_PATH=../phoenix_kit PHOENIX_KIT_LOCATIONS_PATH=../phoenix_kit_locations mix test
 ```
-
-(see "Local cross-repo development" above; point it at a checkout of
-core's `core-v143-module-tables` branch, or its merged successor).
 
 ## Testing
 
