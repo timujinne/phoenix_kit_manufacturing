@@ -11,7 +11,7 @@ defmodule PhoenixKitManufacturing do
   integration are planned in later milestones (see
   `dev_docs/DEVELOPMENT_PLAN.md`).
 
-  Tables are created by PhoenixKit core (V143); the module ships no
+  Tables are created by PhoenixKit core (V144); the module ships no
   migrations of its own.
   """
 

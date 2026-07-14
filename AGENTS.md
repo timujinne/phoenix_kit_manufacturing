@@ -62,7 +62,7 @@ before. Implemented via `pk_dep/3` in `mix.exs` — never hand-edit a
    compile time from each tab's `live_view:` field.
 4. Enable state is the `manufacturing_enabled` boolean setting
    (`PhoenixKit.Settings`); permissions come from `permission_metadata/0`.
-5. Tables are created by PhoenixKit core (V143); this module ships no
+5. Tables are created by PhoenixKit core (V144); this module ships no
    migrations of its own.
 
 ### File layout
@@ -120,11 +120,11 @@ This module ships **no production migrations** — all runtime database
 tables (`phoenix_kit_machines`, `phoenix_kit_machine_type_assignments`,
 `phoenix_kit_machine_operations`) are created by the parent
 [phoenix_kit](https://github.com/BeamLabEU/phoenix_kit) project, migration
-`V143`. This module only defines Ecto schemas that map to those tables.
+`V144`. This module only defines Ecto schemas that map to those tables.
 For the full column/index list and the upgrade-path note for hosts running
 the previously-published `0.2.0` (module-owned schema V1), see that
-migration's moduledoc (`lib/phoenix_kit/migrations/postgres/v143.ex` in
-core); for hosts with real rows still sitting in the pre-V143
+migration's moduledoc (`lib/phoenix_kit/migrations/postgres/v144.ex` in
+core); for hosts with real rows still sitting in the pre-V144
 `phoenix_kit_machine_types`/`phoenix_kit_operations`/
 `phoenix_kit_defect_reasons` directory tables, see
 `dev_docs/LEGACY_DATA_MIGRATION.md` in this repo.
@@ -139,8 +139,8 @@ moduledoc for the mechanics).
 
 The test suite builds its schema by running core's versioned migrations
 directly via `PhoenixKit.Migration.ensure_current/2` in
-`test/test_helper.exs` — no module-owned DDL. V143 ships in phoenix_kit
-≥ 1.7.189 on Hex, so the plain pins are sufficient:
+`test/test_helper.exs` — no module-owned DDL. V144 ships in phoenix_kit
+≥ 1.7.190 on Hex, so the plain pins are sufficient:
 
 ```bash
 mix test

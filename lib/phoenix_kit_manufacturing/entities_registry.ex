@@ -99,7 +99,7 @@ defmodule PhoenixKitManufacturing.EntitiesRegistry do
   @retry_provision_interval 30_000
 
   # Blueprint entity definitions provisioned idempotently by
-  # `provision_blueprints/0` below. Ported from the module's own pre-V143
+  # `provision_blueprints/0` below. Ported from the module's own pre-V144
   # migration (`Migrations.Machines` V5, since removed — see
   # `dev_docs/LEGACY_DATA_MIGRATION.md`); the entities themselves live in
   # PhoenixKit core's entities system (`phoenix_kit_entities`, migration

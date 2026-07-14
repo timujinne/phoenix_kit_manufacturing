@@ -75,9 +75,11 @@ defmodule PhoenixKitManufacturing.MixProject do
 
   defp deps do
     [
-      # The manufacturing DB tables ship in core migration V143, first
-      # published in phoenix_kit 1.7.189 (Hex currently at 1.7.191).
-      pk_dep(:phoenix_kit, "~> 1.7 and >= 1.7.189"),
+      # The manufacturing DB tables ship in core migration V144 (renumbered
+      # from V143 at merge time), first published in phoenix_kit 1.7.190
+      # (1.7.189 tops out at V142); >= 1.7.189 would cover the runtime
+      # schema-prefix support, but the tables need 1.7.190.
+      pk_dep(:phoenix_kit, "~> 1.7.190"),
       pk_dep(:phoenix_kit_comments, "~> 0.2"),
       pk_dep(:phoenix_kit_entities, "~> 0.2.7"),
       # PlacePicker / Spaces.full_path shipped in phoenix_kit_locations 0.3.0.

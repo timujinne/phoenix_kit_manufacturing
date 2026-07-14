@@ -105,7 +105,7 @@ repo_available =
       {:ok, _pid} = started
 
       # Build the schema by running core's versioned migrations — as of
-      # core V143 this module ships no migrations of its own (see
+      # core V144 this module ships no migrations of its own (see
       # CLAUDE.md's "Database & migrations" section); `phoenix_kit_machines`
       # and the rest of this module's runtime tables are created by the
       # same call, core-owned. `ensure_current/2`'s DDL is `IF NOT

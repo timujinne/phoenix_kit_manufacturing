@@ -6,7 +6,7 @@ defmodule PhoenixKitManufacturing.ViewConfigs do
   `Web.ColumnManagement`).
 
   Core owns the module's tables now (see
-  `PhoenixKit.Migrations.Postgres.V143`); a standalone preferences table
+  `PhoenixKit.Migrations.Postgres.V144`); a standalone preferences table
   would need its own core PR. Instead this module stores a
   `%{"columns" => [...], "active_filters" =>
   [...]}`-shaped map as a JSON-encoded blob in `phoenix_kit_settings`

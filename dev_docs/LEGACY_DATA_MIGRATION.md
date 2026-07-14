@@ -12,13 +12,13 @@ of:
 
 Fresh installs, and any host where those three tables are empty or don't
 exist, need nothing from this document — core migration
-`PhoenixKit.Migrations.Postgres.V143` creates the module's current schema
+`PhoenixKit.Migrations.Postgres.V144` creates the module's current schema
 directly and quietly drops the three tables itself when they exist and are
 empty.
 
 ## Do you need this?
 
-After upgrading `phoenix_kit` (core) to a version containing V143, run:
+After upgrading `phoenix_kit` (core) to a version containing V144, run:
 
 ```sql
 SELECT
@@ -28,7 +28,7 @@ SELECT
 ```
 
 (Swap `public.` for your actual schema if PhoenixKit doesn't run in
-`public`.) If any column comes back `true`, V143 found that table non-empty
+`public`.) If any column comes back `true`, V144 found that table non-empty
 and deliberately left it in place instead of risking a silent data drop —
 check its row count and follow the steps below:
 
@@ -43,7 +43,7 @@ type/operation badges (`PhoenixKitManufacturing.EntitiesRegistry` has
 nothing cached for the legacy-table uuids still sitting in
 `phoenix_kit_machine_type_assignments.machine_type_uuid` /
 `phoenix_kit_machine_operations.operation_uuid`) — the join columns
-themselves are untouched by V143 (only the foreign-key *constraints* on
+themselves are untouched by V144 (only the foreign-key *constraints* on
 them are dropped), so no data is lost, it's just not visible yet through
 the new `phoenix_kit_entities`-backed reads.
 
@@ -54,7 +54,7 @@ operations, and defect reasons were plain module-owned tables, migrated by
 `PhoenixKitManufacturing.Migrations.Machines` (the module's own
 `migration_module/0`, run by `mix phoenix_kit.update`). This consolidation
 wave moves the module's tables into core's migration chain
-(`phoenix_kit` V143) and, at the module-code level, retires that V1
+(`phoenix_kit` V144) and, at the module-code level, retires that V1
 directory-table design in favor of `phoenix_kit_entities`-backed blueprint
 records (`machine_type`, `operation`, `defect_reason`), read through
 `PhoenixKitManufacturing.EntitiesRegistry`.
@@ -65,11 +65,11 @@ of the three legacy tables into `phoenix_kit_entities`/
 `phoenix_kit_machine_type_assignments.machine_type_uuid` /
 `phoenix_kit_machine_operations.operation_uuid` join columns to point at
 the new records, and dropping both legacy tables once empty — used to run
-automatically as part of the module's own schema V5 migration. V143 does
+automatically as part of the module's own schema V5 migration. V144 does
 **not** reproduce that step: a core schema migration has no business
 depending on the optional `phoenix_kit_entities` package, and a schema
 migration is the wrong place to run an unbounded, business-data conversion
-against someone else's rows without their say-so. V143's own `up/1`
+against someone else's rows without their say-so. V144's own `up/1`
 already drops the foreign-key *constraints* on both join columns
 unconditionally (so those columns are free-standing soft references, same
 as everywhere else in the module) — it just doesn't rewrite the values or
@@ -146,7 +146,7 @@ hand instead of by module auto-discovery.
    This re-runs the *entire* V1→V5 `up/1` (it's cumulative by design — see
    the copied module's own moduledoc), which is safe even though your
    tables are already past V1: every DDL statement is `IF NOT EXISTS` /
-   idempotent, so V1-V4 are no-ops against a database V143 already brought
+   idempotent, so V1-V4 are no-ops against a database V144 already brought
    to the current shape. Only the last step,
    `migrate_legacy_directories_to_entities/2`, does real work: it
    idempotently ensures the three blueprint entities exist (reusing them if
@@ -194,7 +194,7 @@ The algorithm (see the reference commit above for exact code) is:
    <new uuid> WHERE machine_type_uuid = <old uuid>` for every mapped pair
    (and the equivalent for `phoenix_kit_machine_operations.operation_uuid`)
    — the foreign-key constraints these columns used to carry are already
-   gone by this point (dropped unconditionally by V143's `up/1`), so
+   gone by this point (dropped unconditionally by V144's `up/1`), so
    there's nothing to drop yourself first.
 4. `DROP TABLE phoenix_kit_machine_types / phoenix_kit_operations /
    phoenix_kit_defect_reasons` once you've verified every row migrated.
@@ -203,7 +203,7 @@ The algorithm (see the reference commit above for exact code) is:
 
 - One-time, per-host, manual — not something the module or core will ever
   run automatically, for the reasons in "Background" above.
-- Nothing to do if the three tables are empty or already gone — V143
+- Nothing to do if the three tables are empty or already gone — V144
   handled that case itself.
 - Only the `machine_type_uuid` / `operation_uuid` columns on the two join
   tables change meaning (legacy-table uuid → `phoenix_kit_entity_data`
