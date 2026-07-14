@@ -14,7 +14,14 @@ defmodule PhoenixKitManufacturing.MixProject do
       deps: deps(),
       description: "Manufacturing module for PhoenixKit — machines, production orders.",
       package: package(),
-      dialyzer: [plt_add_apps: [:phoenix_kit]],
+      dialyzer: [
+        plt_add_apps: [
+          :phoenix_kit,
+          :phoenix_kit_comments,
+          :phoenix_kit_entities,
+          :phoenix_kit_locations
+        ]
+      ],
       name: "PhoenixKitManufacturing",
       source_url: @source_url,
       docs: docs(),
@@ -24,7 +31,7 @@ defmodule PhoenixKitManufacturing.MixProject do
 
   def application do
     [
-      extra_applications: [:logger, :phoenix_kit]
+      extra_applications: [:logger, :phoenix_kit, :phoenix_kit_comments, :phoenix_kit_locations]
     ]
   end
 
@@ -36,8 +43,7 @@ defmodule PhoenixKitManufacturing.MixProject do
       quality: ["format", "credo --strict", "dialyzer"],
       "quality.ci": ["format --check-formatted", "credo --strict", "dialyzer"],
       # Schema is applied by test/test_helper.exs on every `mix test` run via
-      # PhoenixKit.Migration.ensure_current/2 plus the module's own
-      # migration_module/0 — so there is no `ecto.migrate` step here.
+      # PhoenixKit.Migration.ensure_current/2 — so there is no `ecto.migrate` step here.
       "test.setup": ["ecto.create --quiet -r PhoenixKitManufacturing.Test.Repo"],
       "test.reset": [
         "ecto.drop --quiet -r PhoenixKitManufacturing.Test.Repo",
@@ -69,7 +75,16 @@ defmodule PhoenixKitManufacturing.MixProject do
 
   defp deps do
     [
-      pk_dep(:phoenix_kit, "~> 1.7.189"),
+      # The manufacturing DB tables ship in core migration V144 (renumbered
+      # from V143 at merge time), first published in phoenix_kit 1.7.190
+      # (1.7.189 tops out at V142); >= 1.7.189 would cover the runtime
+      # schema-prefix support, but the tables need 1.7.190.
+      pk_dep(:phoenix_kit, "~> 1.7.190"),
+      pk_dep(:phoenix_kit_comments, "~> 0.2"),
+      pk_dep(:phoenix_kit_entities, "~> 0.2.7"),
+      # PlacePicker / Spaces.full_path shipped in phoenix_kit_locations 0.3.0.
+      # For unpublished local changes: PHOENIX_KIT_LOCATIONS_PATH=../phoenix_kit_locations.
+      pk_dep(:phoenix_kit_locations, "~> 0.3"),
       {:phoenix_live_view, "~> 1.1"},
       {:ex_doc, "~> 0.39", only: :dev, runtime: false},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},

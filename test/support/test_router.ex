@@ -33,9 +33,13 @@ defmodule PhoenixKitManufacturing.Test.Router do
       live("/machines", MachinesLive, :index)
       live("/machines/new", MachineFormLive, :new)
       live("/machines/types", MachinesLive, :types)
-      live("/machines/types/new", MachineTypeFormLive, :new)
-      live("/machines/types/:uuid/edit", MachineTypeFormLive, :edit)
+      live("/machines/operations", MachinesLive, :operations)
+      live("/machines/defect-reasons", MachinesLive, :defect_reasons)
       live("/machines/:uuid/edit", MachineFormLive, :edit)
+      live("/machines/:uuid/operations", MachineFormLive, :operations)
+      live("/machines/:uuid/files", MachineFormLive, :files)
+      live("/machines/:uuid/comments", MachineFormLive, :comments)
+      live("/machine-types/:uuid/template", MachineTypeTemplateLive, :edit)
     end
   end
 end

@@ -2,14 +2,17 @@ defmodule PhoenixKitManufacturing do
   @moduledoc """
   PhoenixKit module: manufacturing.
 
-  Provides a dashboard plus a **Machines reference book** — machines and
-  their (many-to-many) machine types, with full CRUD, activity logging and
-  multilang type labels. Production orders and warehouse integration are
-  planned in later milestones (see `dev_docs/DEVELOPMENT_PLAN.md`).
+  Provides a dashboard plus a **Machines reference book** — machines with
+  full CRUD and activity logging, plus many-to-many links to machine types
+  and operations. Machine types, operations, and defect reasons are
+  `phoenix_kit_entities`-backed directories (migration V5) rather than
+  module-owned CRUD — see `PhoenixKitManufacturing.EntitiesRegistry` and
+  `dev_docs/ENTITIES_MIGRATION_SPEC.md`. Production orders and warehouse
+  integration are planned in later milestones (see
+  `dev_docs/DEVELOPMENT_PLAN.md`).
 
-  The module ships its own database tables via `migration_module/0`
-  (`PhoenixKitManufacturing.Migrations.Machines`); the host applies them by
-  running `mix phoenix_kit.update`.
+  Tables are created by PhoenixKit core (V144); the module ships no
+  migrations of its own.
   """
 
   use PhoenixKit.Module
@@ -73,7 +76,7 @@ defmodule PhoenixKitManufacturing do
   def css_sources, do: [:phoenix_kit_manufacturing]
 
   @impl PhoenixKit.Module
-  def migration_module, do: PhoenixKitManufacturing.Migrations.Machines
+  def children, do: [PhoenixKitManufacturing.EntitiesRegistry]
 
   @impl PhoenixKit.Module
   def permission_metadata do
@@ -93,6 +96,8 @@ defmodule PhoenixKitManufacturing do
       %Tab{
         id: :manufacturing,
         label: "Manufacturing",
+        gettext_backend: PhoenixKitManufacturing.Gettext,
+        gettext_domain: "default",
         icon: "hero-wrench-screwdriver",
         path: "manufacturing",
         priority: 154,
@@ -105,10 +110,12 @@ defmodule PhoenixKitManufacturing do
         redirect_to_first_subtab: true,
         live_view: {PhoenixKitManufacturing.Web.DashboardLive, :index}
       },
-      # Subtabs — Dashboard (landing), Machines, Types
+      # Subtabs — Dashboard (landing), Machines, Types, Operations, Defect Reasons
       %Tab{
         id: :manufacturing_dashboard,
         label: "Dashboard",
+        gettext_backend: PhoenixKitManufacturing.Gettext,
+        gettext_domain: "default",
         icon: "hero-home",
         path: "manufacturing",
         priority: 155,
@@ -121,21 +128,28 @@ defmodule PhoenixKitManufacturing do
       %Tab{
         id: :manufacturing_machines,
         label: "Machines",
+        gettext_backend: PhoenixKitManufacturing.Gettext,
+        gettext_domain: "default",
         icon: "hero-cog-6-tooth",
         path: "manufacturing/machines",
         priority: 156,
         level: :admin,
         permission: module_key(),
-        # Match the list page + its own sub-pages (new / edit) but NOT the
-        # sibling `machines/types*` subtree. A bare `:prefix` would swallow
-        # types; `:exact` misses /new and /:uuid/edit.
-        match: {:regex, ~r{(?:^|/)manufacturing/machines(?:/new|/[^/]+/edit)?$}},
+        # Match the list page + its own sub-pages (new / edit / the machine
+        # card's operations/files/comments subtabs) but NOT the sibling
+        # `machines/types*` subtree. A bare `:prefix` would swallow types;
+        # `:exact` misses /new and /:uuid/edit (and the card subtabs).
+        match:
+          {:regex,
+           ~r{(?:^|/)manufacturing/machines(?:/new|/[^/]+/(?:edit|operations|files|comments))?$}},
         parent: :manufacturing,
         live_view: {PhoenixKitManufacturing.Web.MachinesLive, :index}
       },
       %Tab{
         id: :manufacturing_types,
         label: "Types",
+        gettext_backend: PhoenixKitManufacturing.Gettext,
+        gettext_domain: "default",
         icon: "hero-tag",
         path: "manufacturing/machines/types",
         priority: 157,
@@ -144,55 +158,127 @@ defmodule PhoenixKitManufacturing do
         parent: :manufacturing,
         live_view: {PhoenixKitManufacturing.Web.MachinesLive, :types}
       },
+      %Tab{
+        id: :manufacturing_operations,
+        label: "Operations",
+        gettext_backend: PhoenixKitManufacturing.Gettext,
+        gettext_domain: "default",
+        icon: "hero-clock",
+        path: "manufacturing/machines/operations",
+        priority: 158,
+        level: :admin,
+        permission: module_key(),
+        parent: :manufacturing,
+        live_view: {PhoenixKitManufacturing.Web.MachinesLive, :operations}
+      },
+      %Tab{
+        id: :manufacturing_defect_reasons,
+        label: "Defect Reasons",
+        gettext_backend: PhoenixKitManufacturing.Gettext,
+        gettext_domain: "default",
+        icon: "hero-exclamation-triangle",
+        path: "manufacturing/machines/defect-reasons",
+        priority: 165,
+        level: :admin,
+        permission: module_key(),
+        parent: :manufacturing,
+        live_view: {PhoenixKitManufacturing.Web.MachinesLive, :defect_reasons}
+      },
       # Static paths MUST come before wildcard :uuid paths.
       %Tab{
         id: :manufacturing_machine_new,
         label: "New Machine",
+        gettext_backend: PhoenixKitManufacturing.Gettext,
+        gettext_domain: "default",
         icon: "hero-plus",
         path: "manufacturing/machines/new",
-        priority: 158,
+        priority: 159,
         level: :admin,
         permission: module_key(),
         parent: :manufacturing,
         visible: false,
         live_view: {PhoenixKitManufacturing.Web.MachineFormLive, :new}
       },
-      %Tab{
-        id: :manufacturing_type_new,
-        label: "New Type",
-        icon: "hero-plus",
-        path: "manufacturing/machines/types/new",
-        priority: 159,
-        level: :admin,
-        permission: module_key(),
-        parent: :manufacturing,
-        visible: false,
-        live_view: {PhoenixKitManufacturing.Web.MachineTypeFormLive, :new}
-      },
-      %Tab{
-        id: :manufacturing_type_edit,
-        label: "Edit Type",
-        icon: "hero-pencil-square",
-        path: "manufacturing/machines/types/:uuid/edit",
-        priority: 160,
-        level: :admin,
-        permission: module_key(),
-        parent: :manufacturing,
-        visible: false,
-        live_view: {PhoenixKitManufacturing.Web.MachineTypeFormLive, :edit}
-      },
       # Wildcard :uuid routes LAST.
       %Tab{
         id: :manufacturing_machine_edit,
         label: "Edit Machine",
+        gettext_backend: PhoenixKitManufacturing.Gettext,
+        gettext_domain: "default",
         icon: "hero-pencil-square",
         path: "manufacturing/machines/:uuid/edit",
-        priority: 161,
+        priority: 163,
         level: :admin,
         permission: module_key(),
         parent: :manufacturing,
         visible: false,
         live_view: {PhoenixKitManufacturing.Web.MachineFormLive, :edit}
+      },
+      # Machine card in-page tabs (Operations/Files/Comments) — hidden CRUD
+      # routes so each tab is directly linkable/bookmarkable, same
+      # `hidden_crud_tabs` convention as `PhoenixKitWarehouse`'s document
+      # forms. See `Web.MachineFormLive`'s moduledoc ("Tabs").
+      %Tab{
+        id: :manufacturing_machine_operations,
+        label: "Machine Operations",
+        gettext_backend: PhoenixKitManufacturing.Gettext,
+        gettext_domain: "default",
+        icon: "hero-clock",
+        path: "manufacturing/machines/:uuid/operations",
+        priority: 168,
+        level: :admin,
+        permission: module_key(),
+        parent: :manufacturing,
+        visible: false,
+        live_view: {PhoenixKitManufacturing.Web.MachineFormLive, :operations}
+      },
+      %Tab{
+        id: :manufacturing_machine_files,
+        label: "Machine Files",
+        gettext_backend: PhoenixKitManufacturing.Gettext,
+        gettext_domain: "default",
+        icon: "hero-paper-clip",
+        path: "manufacturing/machines/:uuid/files",
+        priority: 169,
+        level: :admin,
+        permission: module_key(),
+        parent: :manufacturing,
+        visible: false,
+        live_view: {PhoenixKitManufacturing.Web.MachineFormLive, :files}
+      },
+      %Tab{
+        id: :manufacturing_machine_comments,
+        label: "Machine Comments",
+        gettext_backend: PhoenixKitManufacturing.Gettext,
+        gettext_domain: "default",
+        icon: "hero-chat-bubble-left-right",
+        path: "manufacturing/machines/:uuid/comments",
+        priority: 170,
+        level: :admin,
+        permission: module_key(),
+        parent: :manufacturing,
+        visible: false,
+        live_view: {PhoenixKitManufacturing.Web.MachineFormLive, :comments}
+      },
+      # Machine type field-template editor — hidden CRUD route reachable from
+      # a pencil icon next to each type badge on `Web.MachineFormLive`'s
+      # General tab (or direct URL). Deliberately under "machine-types" (not
+      # "machines") so it never collides with `:manufacturing_machines`'
+      # regex `match:` above or the `:manufacturing_types` entities-redirect
+      # path. See `Web.MachineTypeTemplateLive` moduledoc.
+      %Tab{
+        id: :manufacturing_machine_type_template,
+        label: "Machine Type Template",
+        gettext_backend: PhoenixKitManufacturing.Gettext,
+        gettext_domain: "default",
+        icon: "hero-clipboard-document-list",
+        path: "manufacturing/machine-types/:uuid/template",
+        priority: 171,
+        level: :admin,
+        permission: module_key(),
+        parent: :manufacturing,
+        visible: false,
+        live_view: {PhoenixKitManufacturing.Web.MachineTypeTemplateLive, :edit}
       }
     ]
   end

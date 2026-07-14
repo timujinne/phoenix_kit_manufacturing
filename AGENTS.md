@@ -9,10 +9,14 @@ package that implements the `PhoenixKit.Module` behaviour and is
 auto-discovered by a host Phoenix app at startup. It has no endpoint,
 router, or Ecto repo of its own; it borrows the host's via `phoenix_kit`.
 
-Current scope (v0.2): a **Machines reference book** — machines and their
-many-to-many machine types, with full CRUD, activity logging, and multilang
-type labels. Production orders, warehouse integration, and dashboard widgets
-are planned — see `dev_docs/DEVELOPMENT_PLAN.md`.
+Current scope (v0.2): a **Machines reference book** — machines with full
+CRUD, activity logging, and many-to-many links to machine types and
+operations. Machine types, operations, and defect reasons are
+`phoenix_kit_entities`-backed directories (migration V5), not module-owned
+CRUD — see `PhoenixKitManufacturing.EntitiesRegistry` and
+`dev_docs/ENTITIES_MIGRATION_SPEC.md`. Production orders, warehouse
+integration, and dashboard widgets are planned — see
+`dev_docs/DEVELOPMENT_PLAN.md`.
 
 ## Common Commands
 
@@ -34,10 +38,12 @@ mix precommit               # compile (warnings-as-errors) + deps.unlock check +
 `phoenix_kit` resolves from Hex by default. To build/test against a **local
 checkout** of core (e.g. an unpublished change), export `PHOENIX_KIT_PATH`
 and Mix swaps the Hex pin for a `path:` + `override: true` dep at resolve
-time:
+time. `phoenix_kit_locations` likewise needs `PHOENIX_KIT_LOCATIONS_PATH`
+when the published Hex version doesn't yet include the `PlacePicker` /
+`Spaces.full_path` additions used by this module:
 
 ```bash
-PHOENIX_KIT_PATH=../phoenix_kit mix test
+PHOENIX_KIT_PATH=../phoenix_kit PHOENIX_KIT_LOCATIONS_PATH=../phoenix_kit_locations mix test
 ```
 
 Unset ⇒ the published pin, so `mix hex.publish` and CI resolve exactly as
@@ -56,8 +62,8 @@ before. Implemented via `pk_dep/3` in `mix.exs` — never hand-edit a
    compile time from each tab's `live_view:` field.
 4. Enable state is the `manufacturing_enabled` boolean setting
    (`PhoenixKit.Settings`); permissions come from `permission_metadata/0`.
-5. Tables are applied by `mix phoenix_kit.update`, which discovers this
-   module's `migration_module/0` and runs it.
+5. Tables are created by PhoenixKit core (V144); this module ships no
+   migrations of its own.
 
 ### File layout
 
@@ -65,12 +71,12 @@ before. Implemented via `pk_dep/3` in `mix.exs` — never hand-edit a
 lib/phoenix_kit_manufacturing.ex              # PhoenixKit.Module implementation + admin_tabs
 lib/phoenix_kit_manufacturing/
   machines.ex                                 # Context: CRUD, type sync, activity logging
+  entities_registry.ex                        # ETS+PubSub cache over phoenix_kit_entities
   errors.ex                                   # error atom -> gettext message
   gettext.ex                                  # module Gettext backend (en/et/ru catalogs)
   paths.ex                                    # centralized path helpers
-  migrations/machines.ex                      # versioned migration_module (own tables)
-  schemas/{machine,machine_type,machine_type_assignment}.ex
-  web/{dashboard,machines,machine_form,machine_type_form}_live.ex
+  schemas/{machine,machine_type_assignment,machine_operation}.ex
+  web/{dashboard,machines,machine_form,machine_type_template}_live.ex
 ```
 
 ### Key conventions
@@ -92,23 +98,60 @@ lib/phoenix_kit_manufacturing/
 - **LiveViews** wrap context reads in `rescue` and carry a defensive
   `handle_info/2` catch-all logging at `:debug`, so a not-yet-migrated host
   degrades instead of 500-ing.
-- **Machine type** name/description are translatable via core
-  `PhoenixKitWeb.Components.MultilangForm` (stored in the `data` JSONB
-  column). Machine identifiers (name/code/…) use plain core inputs.
+- **Machine** identifiers (name/code/…) use plain core inputs; `Machine` is
+  the only reference-book schema still module-owned.
+- **`machine_type`/`operation`/`defect_reason`** live in
+  `phoenix_kit_entities` (migration V5, see
+  `dev_docs/ENTITIES_MIGRATION_SPEC.md`) — not module-owned CRUD. Reads and
+  form pickers go through `PhoenixKitManufacturing.EntitiesRegistry` (ETS
+  cache, invalidated via `PhoenixKitEntities.Events` PubSub); editing is the
+  generic entities admin UI (`/admin/entities/:slug/data`, e.g.
+  `/admin/entities/machine_type/data`), not a module-owned form. One
+  exception: `machine_type`'s `field_template` (rendered as dynamic
+  `metadata` inputs on the machine form) lives in
+  `metadata["field_template"]`, a column the generic entities form never
+  edits — `Web.MachineTypeTemplateLive` is a small hidden-route
+  (`visible: false`) mini-editor just for that field, reachable from a
+  pencil icon next to each type badge on the machine form.
 
 ### Database & migrations
 
-This module ships its **own** tables through `migration_module/0`
-(`PhoenixKitManufacturing.Migrations.Machines`) — the standalone-package
-pattern (cf. `phoenix_kit_legal`), *not* the core-migration pattern used by
-first-party modules like `phoenix_kit_locations`. To add/alter tables: bump
-`@current_version`, extend `up/1` + `down/1` (idempotent, prefix-aware SQL),
-and update `migrated_version_runtime/1` if the probe table changes. Hosts
-apply changes with `mix phoenix_kit.update`.
+This module ships **no production migrations** — all runtime database
+tables (`phoenix_kit_machines`, `phoenix_kit_machine_type_assignments`,
+`phoenix_kit_machine_operations`) are created by the parent
+[phoenix_kit](https://github.com/BeamLabEU/phoenix_kit) project, migration
+`V144`. This module only defines Ecto schemas that map to those tables.
+For the full column/index list and the upgrade-path note for hosts running
+the previously-published `0.2.0` (module-owned schema V1), see that
+migration's moduledoc (`lib/phoenix_kit/migrations/postgres/v144.ex` in
+core); for hosts with real rows still sitting in the pre-V144
+`phoenix_kit_machine_types`/`phoenix_kit_operations`/
+`phoenix_kit_defect_reasons` directory tables, see
+`dev_docs/LEGACY_DATA_MIGRATION.md` in this repo.
 
-Tables: `phoenix_kit_machines`, `phoenix_kit_machine_types`,
-`phoenix_kit_machine_type_assignments` (join, unique on
-`(machine_uuid, machine_type_uuid)`, both FKs `ON DELETE CASCADE`).
+The `machine_type`/`operation`/`defect_reason` directories the module reads
+through `EntitiesRegistry` are **not** migration DDL either: the three
+blueprint entities backing them are provisioned by
+`PhoenixKitManufacturing.EntitiesRegistry.init/1` at boot — an idempotent
+get-or-create against `phoenix_kit_entities`, retried at the top of every
+reload until all three are confirmed present (see that module's own
+moduledoc for the mechanics).
+
+The test suite builds its schema by running core's versioned migrations
+directly via `PhoenixKit.Migration.ensure_current/2` in
+`test/test_helper.exs` — no module-owned DDL. V144 ships in phoenix_kit
+≥ 1.7.190 on Hex, so the plain pins are sufficient:
+
+```bash
+mix test
+```
+
+To test against unpublished local checkouts instead, use the env-var
+swap from "Local cross-repo development" above:
+
+```bash
+PHOENIX_KIT_PATH=../phoenix_kit PHOENIX_KIT_LOCATIONS_PATH=../phoenix_kit_locations mix test
+```
 
 ## Testing
 
@@ -118,8 +161,9 @@ Two-level suite (see `test/test_helper.exs`):
   run — no DB needed.
 - **Integration** tests are tagged `:integration` (via `DataCase` /
   `LiveCase`) and auto-excluded when PostgreSQL is unavailable. The helper
-  applies core migrations via `PhoenixKit.Migration.ensure_current/2` and
-  this module's `Migrations.Machines.up/1`, then uses `Ecto.Adapters.SQL.Sandbox`.
+  applies core migrations via `PhoenixKit.Migration.ensure_current/2` (the
+  module ships no migrations of its own — see "Database & migrations"
+  above), then uses `Ecto.Adapters.SQL.Sandbox`.
 
 Version-compliance: `test/phoenix_kit_manufacturing_test.exs` asserts
 `version/0` equals the current release. Keep it in sync (see below).

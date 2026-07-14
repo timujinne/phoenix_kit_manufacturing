@@ -25,12 +25,13 @@ defmodule PhoenixKitManufacturing.Errors do
   @doc "Translates an error reason into a user-facing string via gettext."
   @spec message(term()) :: String.t()
   def message(:machine_not_found), do: gettext("Machine not found.")
-  def message(:machine_type_not_found), do: gettext("Machine type not found.")
   def message(:machine_delete_failed), do: gettext("Failed to delete machine.")
-  def message(:machine_type_delete_failed), do: gettext("Failed to delete machine type.")
 
   def message(:type_assignment_failed),
     do: gettext("Saved but failed to update type assignments.")
+
+  def message(:operation_assignment_failed),
+    do: gettext("Saved but failed to update operation assignments.")
 
   def message(:unexpected), do: gettext("An unexpected error occurred.")
 
