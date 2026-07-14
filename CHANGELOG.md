@@ -2,6 +2,74 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.3.0 - 2026-07-14
+
+Everything merged to `main` since 0.2.0 was published to Hex — PR #2
+(`PhoenixKit.SchemaPrefix` conformance) and PR #3 ("Machines completion,
+UI/i18n polish, entities-backed directories") — plus the fixes from this
+release's post-merge review. 0.2.0 consumers should treat this as the first
+release carrying the full "Machines reference book" feature set described
+in `AGENTS.md`.
+
+### Added
+
+- Dynamic `metadata` fields on the machine form, driven by each linked
+  machine type's `field_template` (`PhoenixKitManufacturing.Machines.merged_field_template/1`),
+  with a hidden-route mini-editor (`Web.MachineTypeTemplateLive`) for editing
+  a type's own template.
+- Operations tab: every published `operation` (entities-backed) can be
+  linked to a machine, each link optionally overriding the operation's own
+  time-norm for that machine (`Machines.sync_machine_operations/3`).
+- Files/attachments (`PhoenixKitManufacturing.Attachments`, `Web.Components.FilesCard`)
+  and a featured-image picker on the machine form.
+- Comments tab, via the optional `phoenix_kit_comments` dependency
+  (`PhoenixKitManufacturing.Comments`).
+- Per-user column selection/filtering/sorting for the machines list
+  (`ColumnConfig`, `Web.ColumnManagement`, `Web.Components.ColumnModal`,
+  `ViewConfigs`).
+- `machine_type` / `operation` / `defect_reason` directories migrated off
+  module-owned CRUD onto `phoenix_kit_entities`-backed blueprint entities,
+  read through a new ETS+PubSub cache (`PhoenixKitManufacturing.EntitiesRegistry`)
+  — see `dev_docs/ENTITIES_MIGRATION_SPEC.md`.
+- Passport fields (`model`, `manufacture_year`, `commissioned_on`,
+  `warranty_until`, maintenance schedule) and a soft location link
+  (`location_uuid`/`space_uuid` via `phoenix_kit_locations`'s `PlacePicker`).
+- `PhoenixKit.SchemaPrefix` on all table-backed schemas, for runtime
+  named-schema (`--prefix`) support.
+
+### Changed
+
+- `MachineTypeAssignment.changeset/2`: `machine_type_uuid` is now a soft
+  reference into `phoenix_kit_entities` (no `belongs_to`/FK), and the
+  changeset now declares `unique_constraint([:machine_uuid,
+  :machine_type_uuid])` matching core's unique index — a duplicate type
+  uuid now returns `{:error, :type_assignment_failed}` instead of raising.
+- `EntitiesRegistry.do_reload/1`: the ETS-payload build is now wrapped in
+  the same `Postgrex.Error :undefined_table` / `catch :exit` guard already
+  used for blueprint provisioning — a host booting before
+  `phoenix_kit_entities`' tables are migrated no longer crashes the
+  supervision tree.
+- `Web.MachineFormLive`'s dynamic `metadata` fields now read from the live
+  changeset instead of the frozen `@machine` struct, so a typed-but-unsaved
+  value survives toggling a machine type on/off.
+- `Web.MachinesLive`'s featured-image thumbnails are now batch-resolved
+  (one query for the whole list) instead of one `Storage.get_file/1` call
+  per row per render.
+- `Web.ColumnManagement.assign_column_state/2` now falls back to
+  `default_columns()` when a persisted column selection validates down to
+  an empty list (e.g. every saved column id was renamed/removed), instead
+  of rendering a table with no data columns.
+- `Comments.available?/0` now rescues and catches `:exit`, matching this
+  module's convention for every other "is this optional dependency alive"
+  check.
+- `phoenix_kit` pin tightened to `~> 1.7.190`; `phoenix_kit_locations`
+  pinned to `~> 0.3`.
+
+See `dev_docs/pull_requests/2026/3-machines-completion/CLAUDE_REVIEW.md` for
+the full PR #3 review, including documented-but-not-fixed follow-ups
+(upload content-type hardening, abandoned-draft folder cleanup, and a couple
+of render-path query-batching improvements).
+
 ## 0.2.0 - 2026-07-10
 
 ### Added
