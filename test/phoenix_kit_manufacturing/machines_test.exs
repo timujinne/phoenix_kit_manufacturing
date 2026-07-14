@@ -135,6 +135,16 @@ defmodule PhoenixKitManufacturing.MachinesTest do
       assert Machines.linked_type_uuids(machine.uuid) == [cnc.uuid]
       refute cnc.uuid in Enum.map(Machines.list_machine_types(), & &1.uuid)
     end
+
+    test "a duplicate type uuid in the list returns a clean error instead of raising", %{
+      machine: machine,
+      cnc: cnc
+    } do
+      # `idx_machine_type_assignments_unique` (core V144) would otherwise
+      # surface as an uncaught Ecto.ConstraintError on the second insert.
+      assert {:error, :type_assignment_failed} =
+               Machines.sync_machine_types(machine.uuid, [cnc.uuid, cnc.uuid])
+    end
   end
 
   describe "machine ↔ operation linking" do

@@ -38,7 +38,11 @@ defmodule PhoenixKitManufacturing.Schemas.MachineTypeAssignment do
   the `machine` association so an FK violation comes back as a clean
   `{:error, changeset}` instead of raising `Ecto.ConstraintError`.
   `machine_type_uuid` is a soft reference (see moduledoc) — there is no
-  Postgres FK left to violate, so no `assoc_constraint/2` for it.
+  Postgres FK left to violate, so no `assoc_constraint/2` for it, but the
+  pair is still covered by `idx_machine_type_assignments_unique`
+  (core V144) — `unique_constraint/2` turns a duplicate-pair insert (e.g. a
+  caller passing the same type uuid twice) into the same clean
+  `{:error, changeset}` instead of an uncaught `Ecto.ConstraintError`.
   """
   @spec changeset(t(), map()) :: Ecto.Changeset.t()
   def changeset(assignment, attrs) do
@@ -46,5 +50,8 @@ defmodule PhoenixKitManufacturing.Schemas.MachineTypeAssignment do
     |> cast(attrs, [:machine_uuid, :machine_type_uuid, :inserted_at, :updated_at])
     |> validate_required([:machine_uuid, :machine_type_uuid])
     |> assoc_constraint(:machine)
+    |> unique_constraint([:machine_uuid, :machine_type_uuid],
+      name: :idx_machine_type_assignments_unique
+    )
   end
 end

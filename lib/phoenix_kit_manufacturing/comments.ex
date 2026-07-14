@@ -27,6 +27,10 @@ defmodule PhoenixKitManufacturing.Comments do
   @spec available?() :: boolean()
   def available? do
     Code.ensure_loaded?(PhoenixKitComments) and PhoenixKitComments.enabled?()
+  rescue
+    _ -> false
+  catch
+    :exit, _ -> false
   end
 
   @doc "Comment count for one resource. Returns 0 when unavailable."

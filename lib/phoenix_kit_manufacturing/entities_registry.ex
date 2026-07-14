@@ -345,7 +345,15 @@ defmodule PhoenixKitManufacturing.EntitiesRegistry do
   defp do_reload(blueprints_provisioned) do
     blueprints_provisioned = blueprints_provisioned or provision_blueprints()
 
-    payload = Enum.flat_map(@entity_names, fn {kind, name} -> build_kind(kind, name) end)
+    case build_payload() do
+      {:ok, payload} -> write_payload(payload)
+      :error -> :ok
+    end
+
+    blueprints_provisioned
+  end
+
+  defp write_payload(payload) do
     new_keys = MapSet.new(payload, fn {k, _v} -> k end)
 
     :ets.insert(@table, payload)
@@ -356,15 +364,40 @@ defmodule PhoenixKitManufacturing.EntitiesRegistry do
     # kind being removed).
     @table
     |> :ets.tab2list()
-    |> Enum.each(fn {k, _v} ->
-      cond do
-        k == :ready -> :ok
-        MapSet.member?(new_keys, k) -> :ok
-        true -> :ets.delete(@table, k)
-      end
-    end)
+    |> Enum.each(fn {k, _v} -> delete_if_stale(k, new_keys) end)
+  end
 
-    blueprints_provisioned
+  defp delete_if_stale(:ready, _new_keys), do: :ok
+
+  defp delete_if_stale(key, new_keys) do
+    unless MapSet.member?(new_keys, key), do: :ets.delete(@table, key)
+  end
+
+  # Wrapped exactly like `provision_blueprints/0` below: `build_kind/2` runs
+  # the same `Entities.get_entity_by_name/1` read `provision_blueprints/0`
+  # already rescues `Postgrex.Error :undefined_table` for, but until now
+  # nothing protected *this* call — a host booting before
+  # `phoenix_kit_entities`' own tables are migrated (a separate migration
+  # namespace from this module's core V144 tables, see
+  # `dev_docs/ENTITIES_MIGRATION_SPEC.md`) would crash `init/1` here and
+  # take down the supervision tree. Leaves the ETS table untouched (empty
+  # or whatever it was) on failure; the next reload (event- or
+  # timer-driven) retries.
+  defp build_payload do
+    {:ok, Enum.flat_map(@entity_names, fn {kind, name} -> build_kind(kind, name) end)}
+  rescue
+    e in Postgrex.Error ->
+      unless match?(%{postgres: %{code: :undefined_table}}, e) do
+        Logger.warning("EntitiesRegistry: reload failed: #{Exception.message(e)}")
+      end
+
+      :error
+
+    e ->
+      Logger.warning("EntitiesRegistry: reload error: #{Exception.message(e)}")
+      :error
+  catch
+    :exit, _ -> :error
   end
 
   # Idempotently creates the machine_type/operation/defect_reason blueprint

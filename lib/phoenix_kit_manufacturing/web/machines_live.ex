@@ -245,6 +245,7 @@ defmodule PhoenixKitManufacturing.Web.MachinesLive do
   defp enrich_machines(machines, locale) do
     location_by_uuid = location_labels(machines, locale)
     type_uuids_by_machine = Machines.linked_type_uuids_by_machine(Enum.map(machines, & &1.uuid))
+    featured_file_by_uuid = featured_files_by_machine(machines)
 
     Enum.map(machines, fn m ->
       # `EntitiesRegistry.label/3` resolves "Unknown" for a type_uuid it
@@ -274,9 +275,43 @@ defmodule PhoenixKitManufacturing.Web.MachinesLive do
         commissioned_on: m.commissioned_on,
         warranty_until: m.warranty_until,
         to_next_on: m.to_next_on,
-        data: m.data
+        data: m.data,
+        featured_file: Map.get(featured_file_by_uuid, m.uuid)
       }
     end)
+  end
+
+  # Batch-resolves each machine's featured-image Storage file in a single
+  # query (see `location_labels/2` above for the same pattern applied to
+  # locations). `table_default_with_cards/1` renders both the desktop table
+  # and the mobile card layout in the same response (visibility toggled with
+  # CSS, not conditional rendering), so an unbatched per-row lookup here ran
+  # twice per machine, on every search keystroke/sort/filter — not just on
+  # initial load.
+  defp featured_files_by_machine(machines) do
+    uuids =
+      machines
+      |> Enum.map(&Map.get(&1.data || %{}, "featured_image_uuid"))
+      |> Enum.filter(&(is_binary(&1) and &1 != ""))
+      |> Enum.uniq()
+
+    files_by_uuid =
+      uuids
+      |> safe_get_files()
+      |> Map.new(&{&1.uuid, &1})
+
+    Map.new(machines, fn m ->
+      uuid = Map.get(m.data || %{}, "featured_image_uuid")
+      {m.uuid, Map.get(files_by_uuid, uuid)}
+    end)
+  end
+
+  defp safe_get_files(uuids) do
+    Storage.get_files(uuids)
+  rescue
+    error ->
+      Logger.warning("Failed to batch-load Storage files #{inspect(uuids)}: #{inspect(error)}")
+      []
   end
 
   # Batch-resolves location labels, deduping identical location_uuid/
@@ -1034,27 +1069,13 @@ defmodule PhoenixKitManufacturing.Web.MachinesLive do
   # Resolves the Storage file backing a machine's featured image (set via
   # the Files section on MachineFormLive — stored at
   # `machine.data["featured_image_uuid"]`, see `PhoenixKitManufacturing.Attachments`).
-  # Accepts anything carrying a `:data` map — the `%Machine{}` struct and
-  # the flat maps produced by `enrich_machines/2` above, so this resolution
-  # logic only needs writing once.
-  defp featured_thumbnail_file(%{data: data}) when is_map(data) do
-    with uuid when is_binary(uuid) and uuid != "" <- Map.get(data, "featured_image_uuid"),
-         %Storage.File{} = file <- safe_get_file(uuid) do
-      file
-    else
-      _ -> nil
-    end
-  end
-
+  # Batch-resolved once per list render by `enrich_machines/2` /
+  # `featured_files_by_machine/1` above — this just reads that precomputed
+  # `:featured_file` field, so it works unchanged whether `machine` is one
+  # of the flat maps produced by `enrich_machines/2` (the only shape this is
+  # ever called with) or, in principle, any other map carrying that key.
+  defp featured_thumbnail_file(%{featured_file: %Storage.File{} = file}), do: file
   defp featured_thumbnail_file(_), do: nil
-
-  defp safe_get_file(uuid) do
-    Storage.get_file(uuid)
-  rescue
-    error ->
-      Logger.warning("Failed to load Storage file #{uuid}: #{inspect(error)}")
-      nil
-  end
 
   # Small avatar-style thumbnail rendered next to a machine's name in the
   # table's first column and in the mobile card header. Falls back to a

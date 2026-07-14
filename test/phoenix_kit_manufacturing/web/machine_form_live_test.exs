@@ -313,6 +313,35 @@ defmodule PhoenixKitManufacturing.Web.MachineFormLiveTest do
       refute html =~ "machine[metadata][power_kw]"
     end
 
+    test "a typed-but-unsaved value survives toggling a second type on", %{
+      conn: conn,
+      type: type
+    } do
+      other_type = create_machine_type!(%{name: "Lathe"})
+
+      conn = put_test_scope(conn, fake_scope())
+      {:ok, view, _html} = live(conn, new_path())
+
+      render_click(view, "toggle_type", %{"uuid" => type.uuid})
+
+      html =
+        view
+        |> form("form",
+          machine: %{name: "CNC-22", status: "active", metadata: %{"power_kw" => "7.5"}}
+        )
+        |> render_change()
+
+      assert html =~ "7.5"
+
+      # Toggling a second type recomputes @merged_template and re-renders
+      # every dynamic metadata field — regression: this used to reset
+      # power_kw's rendered value back to blank (read from the frozen
+      # @machine.metadata instead of the live changeset).
+      html = render_click(view, "toggle_type", %{"uuid" => other_type.uuid})
+
+      assert html =~ "7.5"
+    end
+
     test "saving coerces the boolean field and stores the rest as submitted strings", %{
       conn: conn,
       type: type

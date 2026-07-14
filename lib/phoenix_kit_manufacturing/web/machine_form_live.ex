@@ -864,7 +864,11 @@ defmodule PhoenixKitManufacturing.Web.MachineFormLive do
                     </p>
 
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <.dynamic_metadata_field :for={row <- @merged_template} row={row} machine={@machine} />
+                      <.dynamic_metadata_field
+                        :for={row <- @merged_template}
+                        row={row}
+                        changeset={@changeset}
+                      />
                     </div>
                   </div>
                 <% end %>
@@ -979,13 +983,23 @@ defmodule PhoenixKitManufacturing.Web.MachineFormLive do
   end
 
   attr(:row, :map, required: true)
-  attr(:machine, Machine, required: true)
+  attr(:changeset, Ecto.Changeset, required: true)
 
+  # Reads from the *live* changeset, not `@machine.metadata` directly: the
+  # changeset's `:metadata` change already reflects every field currently
+  # rendered as of the last `phx-change="validate"` (all dynamic fields
+  # submit together, since they share the enclosing `<.form>`). Toggling a
+  # type recomputes `@merged_template`, which re-renders this whole
+  # comprehension — reading the frozen `@machine.metadata` there would
+  # silently discard any not-yet-saved value the user just typed into a
+  # field whose row happens to shift position in the process. Falls back to
+  # the machine's saved metadata for a key never yet submitted (e.g. a type
+  # just toggled on).
   defp dynamic_metadata_field(assigns) do
     key = template_row(assigns.row, :key)
     type = template_row(assigns.row, :type)
     options = template_row(assigns.row, :options) || []
-    metadata = assigns.machine.metadata || %{}
+    metadata = Ecto.Changeset.get_field(assigns.changeset, :metadata) || %{}
 
     assigns =
       assigns

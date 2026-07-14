@@ -269,8 +269,18 @@ defmodule PhoenixKitManufacturing.Web.ColumnManagement do
 
     selected =
       case Map.get(config, "columns") do
-        cols when is_list(cols) and cols != [] -> column_config_module.validate_columns(cols)
-        _ -> column_config_module.default_columns()
+        cols when is_list(cols) and cols != [] ->
+          # A persisted id that no longer exists (a column renamed/removed
+          # since the config was saved) is dropped by `validate_columns/1`;
+          # if that empties the *validated* result, fall back to defaults
+          # rather than rendering a table with no data columns at all.
+          case column_config_module.validate_columns(cols) do
+            [] -> column_config_module.default_columns()
+            valid -> valid
+          end
+
+        _ ->
+          column_config_module.default_columns()
       end
 
     active_filters =
