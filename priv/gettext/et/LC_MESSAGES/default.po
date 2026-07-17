@@ -20,7 +20,7 @@ msgstr "Peagi tulekul"
 #: lib/phoenix_kit_manufacturing/web/dashboard_live.ex:82
 #: lib/phoenix_kit_manufacturing/web/machines_live.ex:106
 #: lib/phoenix_kit_manufacturing/web/machines_live.ex:191
-#: lib/phoenix_kit_manufacturing/web/machines_live.ex:774
+#: lib/phoenix_kit_manufacturing/web/machines_live.ex:809
 #, elixir-autogen, elixir-format
 msgid "Machines"
 msgstr "Masinad"
@@ -36,14 +36,14 @@ msgstr "Tootmine"
 msgid "Production Orders"
 msgstr "Tootmistellimused"
 
-#: lib/phoenix_kit_manufacturing/web/machines_live.ex:686
+#: lib/phoenix_kit_manufacturing/web/machines_live.ex:721
 #, elixir-autogen, elixir-format
 msgid "Actions"
 msgstr "Tegevused"
 
 #: lib/phoenix_kit_manufacturing/column_config/machines.ex:168
 #: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:566
-#: lib/phoenix_kit_manufacturing/web/machines_live.ex:1083
+#: lib/phoenix_kit_manufacturing/web/machines_live.ex:1104
 #, elixir-autogen, elixir-format
 msgid "Active"
 msgstr "Aktiivne"
@@ -60,7 +60,7 @@ msgstr "Ilmnes ootamatu viga."
 
 #: lib/phoenix_kit_manufacturing/web/components/column_modal.ex:186
 #: lib/phoenix_kit_manufacturing/web/components/files_card.ex:165
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:904
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:908
 #: lib/phoenix_kit_manufacturing/web/machine_type_template_live.ex:393
 #, elixir-autogen, elixir-format
 msgid "Cancel"
@@ -82,12 +82,12 @@ msgstr "Klõpsa valimiseks. Masinal võib olla mitu tüüpi."
 msgid "Code"
 msgstr "Kood"
 
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:913
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:917
 #, elixir-autogen, elixir-format
 msgid "Create Machine"
 msgstr "Loo masin"
 
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:909
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:913
 #, elixir-autogen, elixir-format
 msgid "Creating..."
 msgstr "Loomine..."
@@ -99,19 +99,19 @@ msgstr "Töölaud"
 
 #: lib/phoenix_kit_manufacturing/column_config/machines.ex:172
 #: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:570
-#: lib/phoenix_kit_manufacturing/web/machines_live.ex:1087
+#: lib/phoenix_kit_manufacturing/web/machines_live.ex:1108
 #, elixir-autogen, elixir-format
 msgid "Decommissioned"
 msgstr "Kasutuselt kõrvaldatud"
 
-#: lib/phoenix_kit_manufacturing/web/machines_live.ex:663
-#: lib/phoenix_kit_manufacturing/web/machines_live.ex:724
-#: lib/phoenix_kit_manufacturing/web/machines_live.ex:751
+#: lib/phoenix_kit_manufacturing/web/machines_live.ex:698
+#: lib/phoenix_kit_manufacturing/web/machines_live.ex:759
+#: lib/phoenix_kit_manufacturing/web/machines_live.ex:786
 #, elixir-autogen, elixir-format
 msgid "Delete"
 msgstr "Kustuta"
 
-#: lib/phoenix_kit_manufacturing/web/machines_live.ex:748
+#: lib/phoenix_kit_manufacturing/web/machines_live.ex:783
 #, elixir-autogen, elixir-format
 msgid "Delete Machine"
 msgstr "Kustuta masin"
@@ -121,8 +121,8 @@ msgstr "Kustuta masin"
 msgid "Description"
 msgstr "Kirjeldus"
 
-#: lib/phoenix_kit_manufacturing/web/machines_live.ex:655
-#: lib/phoenix_kit_manufacturing/web/machines_live.ex:716
+#: lib/phoenix_kit_manufacturing/web/machines_live.ex:690
+#: lib/phoenix_kit_manufacturing/web/machines_live.ex:751
 #, elixir-autogen, elixir-format
 msgid "Edit"
 msgstr "Muuda"
@@ -158,7 +158,7 @@ msgid "Inventory number, e.g. M-001"
 msgstr "Inventarinumber, nt M-001"
 
 #: lib/phoenix_kit_manufacturing/column_config/machines.ex:65
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:958
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:962
 #, elixir-autogen, elixir-format
 msgid "Location"
 msgstr "Asukoht"
@@ -174,7 +174,7 @@ msgstr "Masinatüübid"
 msgid "Machine created."
 msgstr "Masin loodud."
 
-#: lib/phoenix_kit_manufacturing/web/machines_live.ex:500
+#: lib/phoenix_kit_manufacturing/web/machines_live.ex:535
 #, elixir-autogen, elixir-format
 msgid "Machine deleted."
 msgstr "Masin kustutatud."
@@ -191,7 +191,7 @@ msgstr "Masin uuendatud."
 
 #: lib/phoenix_kit_manufacturing/column_config/machines.ex:169
 #: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:567
-#: lib/phoenix_kit_manufacturing/web/machines_live.ex:1084
+#: lib/phoenix_kit_manufacturing/web/machines_live.ex:1105
 #, elixir-autogen, elixir-format
 msgid "Maintenance"
 msgstr "Hooldus"
@@ -214,12 +214,12 @@ msgid "Name"
 msgstr "Nimi"
 
 #: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:320
-#: lib/phoenix_kit_manufacturing/web/machines_live.ex:600
+#: lib/phoenix_kit_manufacturing/web/machines_live.ex:635
 #, elixir-autogen, elixir-format
 msgid "New Machine"
 msgstr "Uus masin"
 
-#: lib/phoenix_kit_manufacturing/web/machines_live.ex:699
+#: lib/phoenix_kit_manufacturing/web/machines_live.ex:734
 #, elixir-autogen, elixir-format
 msgid "No machines yet."
 msgstr "Masinaid veel pole."
@@ -234,7 +234,7 @@ msgstr "Märkused selle masina kohta..."
 msgid "Production equipment reference book."
 msgstr "Tootmisseadmete teatmik."
 
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:914
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:918
 #: lib/phoenix_kit_manufacturing/web/machine_type_template_live.ex:399
 #, elixir-autogen, elixir-format
 msgid "Save Changes"
@@ -245,7 +245,7 @@ msgstr "Salvesta muudatused"
 msgid "Saved but failed to update type assignments."
 msgstr "Salvestatud, kuid tüüpide seoste uuendamine ebaõnnestus."
 
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:909
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:913
 #: lib/phoenix_kit_manufacturing/web/machine_type_template_live.ex:397
 #, elixir-autogen, elixir-format
 msgid "Saving..."
@@ -262,14 +262,14 @@ msgstr "Seerianumber"
 msgid "Status"
 msgstr "Olek"
 
-#: lib/phoenix_kit_manufacturing/web/machines_live.ex:750
+#: lib/phoenix_kit_manufacturing/web/machines_live.ex:785
 #, elixir-autogen, elixir-format
 msgid "This will permanently delete this machine. This cannot be undone."
 msgstr "See kustutab selle masina jäädavalt. Seda ei saa tagasi võtta."
 
 #: lib/phoenix_kit_manufacturing/column_config/machines.ex:77
 #: lib/phoenix_kit_manufacturing/web/dashboard_live.ex:71
-#: lib/phoenix_kit_manufacturing/web/machines_live.ex:777
+#: lib/phoenix_kit_manufacturing/web/machines_live.ex:812
 #, elixir-autogen, elixir-format
 msgid "Types"
 msgstr "Tüübid"
@@ -299,7 +299,7 @@ msgstr "nt CNC-freesmasin #3"
 msgid "All columns selected"
 msgstr "Kõik veerud on valitud"
 
-#: lib/phoenix_kit_manufacturing/web/machines_live.ex:864
+#: lib/phoenix_kit_manufacturing/web/machines_live.ex:899
 #, elixir-autogen, elixir-format
 msgid "Any"
 msgstr "Kõik"
@@ -309,7 +309,7 @@ msgstr "Kõik"
 msgid "Apply"
 msgstr "Rakenda"
 
-#: lib/phoenix_kit_manufacturing/web/machines_live.ex:620
+#: lib/phoenix_kit_manufacturing/web/machines_live.ex:655
 #, elixir-autogen, elixir-format
 msgid "Ascending"
 msgstr "Kasvavalt"
@@ -319,18 +319,18 @@ msgstr "Kasvavalt"
 msgid "Available"
 msgstr "Olemas"
 
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:1077
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:1091
 #, elixir-autogen, elixir-format
 msgid "Base"
 msgstr "Baas"
 
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:1080
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:1094
 #, elixir-autogen, elixir-format
 msgid "Base: %{seconds}s"
 msgstr "Baas: %{seconds} s"
 
 #: lib/phoenix_kit_manufacturing/web/components/files_card.ex:84
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:961
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:965
 #, elixir-autogen, elixir-format
 msgid "Change"
 msgstr "Muuda"
@@ -340,13 +340,13 @@ msgstr "Muuda"
 msgid "Click to add"
 msgstr "Klõpsa lisamiseks"
 
-#: lib/phoenix_kit_manufacturing/web/machines_live.ex:638
+#: lib/phoenix_kit_manufacturing/web/machines_live.ex:673
 #, elixir-autogen, elixir-format
 msgid "Columns"
 msgstr "Veerud"
 
 #: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:692
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:935
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:939
 #, elixir-autogen, elixir-format
 msgid "Comments"
 msgstr "Kommentaarid"
@@ -357,13 +357,13 @@ msgstr "Kommentaarid"
 msgid "Commissioned on"
 msgstr "Kasutusele võetud"
 
-#: lib/phoenix_kit_manufacturing/web/machines_live.ex:843
+#: lib/phoenix_kit_manufacturing/web/machines_live.ex:878
 #, elixir-autogen, elixir-format
 msgid "Contains..."
 msgstr "Sisaldab..."
 
 #: lib/phoenix_kit_manufacturing/web/components/column_modal.ex:60
-#: lib/phoenix_kit_manufacturing/web/machines_live.ex:635
+#: lib/phoenix_kit_manufacturing/web/machines_live.ex:670
 #, elixir-autogen, elixir-format
 msgid "Customize columns"
 msgstr "Veergude kohandamine"
@@ -373,12 +373,12 @@ msgstr "Veergude kohandamine"
 msgid "Defaults"
 msgstr "Vaikimisi"
 
-#: lib/phoenix_kit_manufacturing/web/machines_live.ex:791
+#: lib/phoenix_kit_manufacturing/web/machines_live.ex:826
 #, elixir-autogen, elixir-format
 msgid "Defect Reasons"
 msgstr "Defektide põhjused"
 
-#: lib/phoenix_kit_manufacturing/web/machines_live.ex:621
+#: lib/phoenix_kit_manufacturing/web/machines_live.ex:656
 #, elixir-autogen, elixir-format
 msgid "Descending"
 msgstr "Kahanevalt"
@@ -408,7 +408,7 @@ msgstr "Luba filter"
 msgid "Fields defined by the selected machine types."
 msgstr "Väljad, mille on määranud valitud masinatüübid."
 
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:961
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:965
 #, elixir-autogen, elixir-format
 msgid "Hide"
 msgstr "Peida"
@@ -439,12 +439,12 @@ msgstr "Hoolduse intervall (päevades)"
 msgid "Manufacture year"
 msgstr "Tootmisaasta"
 
-#: lib/phoenix_kit_manufacturing/web/machines_live.ex:899
+#: lib/phoenix_kit_manufacturing/web/machines_live.ex:934
 #, elixir-autogen, elixir-format
 msgid "Max"
 msgstr "Max"
 
-#: lib/phoenix_kit_manufacturing/web/machines_live.ex:889
+#: lib/phoenix_kit_manufacturing/web/machines_live.ex:924
 #, elixir-autogen, elixir-format
 msgid "Min"
 msgstr "Min"
@@ -457,7 +457,7 @@ msgstr "Mudel"
 
 #: lib/phoenix_kit_manufacturing/column_config/machines.ex:171
 #: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:569
-#: lib/phoenix_kit_manufacturing/web/machines_live.ex:1086
+#: lib/phoenix_kit_manufacturing/web/machines_live.ex:1107
 #, elixir-autogen, elixir-format
 msgid "Mothballed"
 msgstr "Konserveeritud"
@@ -484,8 +484,8 @@ msgid "Notes only visible to admins..."
 msgstr "Märkused, mis on nähtavad ainult administraatoritele..."
 
 #: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:678
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:876
-#: lib/phoenix_kit_manufacturing/web/machines_live.ex:784
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:880
+#: lib/phoenix_kit_manufacturing/web/machines_live.ex:819
 #, elixir-autogen, elixir-format
 msgid "Operations"
 msgstr "Toimingud"
@@ -500,12 +500,12 @@ msgstr "Eemalda"
 
 #: lib/phoenix_kit_manufacturing/column_config/machines.ex:170
 #: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:568
-#: lib/phoenix_kit_manufacturing/web/machines_live.ex:1085
+#: lib/phoenix_kit_manufacturing/web/machines_live.ex:1106
 #, elixir-autogen, elixir-format
 msgid "Repair"
 msgstr "Remont"
 
-#: lib/phoenix_kit_manufacturing/web/machines_live.ex:578
+#: lib/phoenix_kit_manufacturing/web/machines_live.ex:613
 #, elixir-autogen, elixir-format
 msgid "Reset"
 msgstr "Lähtesta"
@@ -515,7 +515,7 @@ msgstr "Lähtesta"
 msgid "Saved but failed to update operation assignments."
 msgstr "Salvestatud, kuid toimingute seoste uuendamine ebaõnnestus."
 
-#: lib/phoenix_kit_manufacturing/web/machines_live.ex:559
+#: lib/phoenix_kit_manufacturing/web/machines_live.ex:594
 #, elixir-autogen, elixir-format
 msgid "Search..."
 msgstr "Otsi..."
@@ -525,7 +525,7 @@ msgstr "Otsi..."
 msgid "Selected"
 msgstr "Valitud"
 
-#: lib/phoenix_kit_manufacturing/web/machines_live.ex:603
+#: lib/phoenix_kit_manufacturing/web/machines_live.ex:638
 #, elixir-autogen, elixir-format
 msgid "Sort by:"
 msgstr "Sorteerimine:"
@@ -535,12 +535,12 @@ msgstr "Sorteerimine:"
 msgid "Specifications"
 msgstr "Spetsifikatsioon"
 
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:879
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:883
 #, elixir-autogen, elixir-format
 msgid "Toggle the operations this machine performs. Override the time norm for this machine, or leave it blank to use the operation's base norm."
 msgstr "Lülita sisse toimingud, mida see masin teeb. Sisesta selle masina jaoks oma ajanorm või jäta tühjaks, et kasutada toimingu baasnormi."
 
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:912
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:916
 #, elixir-autogen, elixir-format
 msgid "Waiting for uploads..."
 msgstr "Ootab üleslaadimist..."
@@ -551,7 +551,7 @@ msgstr "Ootab üleslaadimist..."
 msgid "Warranty until"
 msgstr "Garantii kuni"
 
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:1074
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:1088
 #, elixir-autogen, elixir-format
 msgid "base %{seconds}s"
 msgstr "baas %{seconds} s"
@@ -586,7 +586,7 @@ msgstr "Masina kommentaarid"
 msgid " or drag & drop"
 msgstr " või lohista siia"
 
-#: lib/phoenix_kit_manufacturing/web/machines_live.ex:571
+#: lib/phoenix_kit_manufacturing/web/machines_live.ex:606
 #, elixir-autogen, elixir-format
 msgid "%{count} filter active"
 msgid_plural "%{count} filters active"
@@ -789,7 +789,62 @@ msgstr "nt power_kw"
 msgid "optional, e.g., kW"
 msgstr "valikuline, nt kW"
 
-#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:1023
+#: lib/phoenix_kit_manufacturing/web/machine_form_live.ex:1037
 #, elixir-autogen, elixir-format
 msgid "from %{type}"
 msgstr "tüübist %{type}"
+
+#: lib/phoenix_kit_manufacturing/web/column_management.ex:242
+#, elixir-autogen, elixir-format
+msgid "Columns updated"
+msgstr "Veerud uuendatud"
+
+#: lib/phoenix_kit_manufacturing/attachments.ex:243
+#, elixir-autogen, elixir-format
+msgid "Could not prepare the files folder."
+msgstr "Failikausta ettevalmistamine ebaõnnestus."
+
+#: lib/phoenix_kit_manufacturing/attachments.ex:303
+#, elixir-autogen, elixir-format
+msgid "Could not remove file."
+msgstr "Faili eemaldamine ebaõnnestus."
+
+#: lib/phoenix_kit_manufacturing/web/column_management.ex:252
+#, elixir-autogen, elixir-format
+msgid "Failed to save columns"
+msgstr "Veergude salvestamine ebaõnnestus"
+
+#: lib/phoenix_kit_manufacturing/attachments.ex:448
+#, elixir-autogen, elixir-format
+msgid "File is too large."
+msgstr "Fail on liiga suur."
+
+#: lib/phoenix_kit_manufacturing/attachments.ex:451
+#, elixir-autogen, elixir-format
+msgid "File type not accepted."
+msgstr "Failitüüpi ei aktsepteerita."
+
+#: lib/phoenix_kit_manufacturing/attachments.ex:504
+#, elixir-autogen, elixir-format
+msgid "Selected image could not be loaded."
+msgstr "Valitud pilti ei õnnestunud laadida."
+
+#: lib/phoenix_kit_manufacturing/attachments.ex:454
+#, elixir-autogen, elixir-format
+msgid "Too many files."
+msgstr "Liiga palju faile."
+
+#: lib/phoenix_kit_manufacturing/attachments.ex:457
+#, elixir-autogen, elixir-format
+msgid "Upload error: %{reason}"
+msgstr "Üleslaadimise viga: %{reason}"
+
+#: lib/phoenix_kit_manufacturing/attachments.ex:747
+#, elixir-autogen, elixir-format
+msgid "Upload failed for %{name}."
+msgstr "%{name} üleslaadimine ebaõnnestus."
+
+#: lib/phoenix_kit_manufacturing/attachments.ex:350
+#, elixir-autogen, elixir-format
+msgid "Upload failed: no target file area selected."
+msgstr "Üleslaadimine ebaõnnestus: sihtala pole valitud."

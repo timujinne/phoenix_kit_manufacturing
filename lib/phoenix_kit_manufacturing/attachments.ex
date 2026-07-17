@@ -60,6 +60,8 @@ defmodule PhoenixKitManufacturing.Attachments do
   to `folder_name_for/1` to support additional resource structs.
   """
 
+  use Gettext, backend: PhoenixKitManufacturing.Gettext
+
   require Logger
 
   import Ecto.Query, warn: false
@@ -238,7 +240,7 @@ defmodule PhoenixKitManufacturing.Attachments do
          put_flash(
            socket,
            :error,
-           Gettext.gettext(PhoenixKitWeb.Gettext, "Could not prepare the files folder.")
+           gettext("Could not prepare the files folder.")
          )}
     end
   end
@@ -298,7 +300,7 @@ defmodule PhoenixKitManufacturing.Attachments do
          put_flash(
            socket,
            :error,
-           Gettext.gettext(PhoenixKitWeb.Gettext, "Could not remove file.")
+           gettext("Could not remove file.")
          )}
     end
   end
@@ -345,7 +347,7 @@ defmodule PhoenixKitManufacturing.Attachments do
          put_flash(
            socket,
            :error,
-           Gettext.gettext(PhoenixKitWeb.Gettext, "Upload failed: no target file area selected.")
+           gettext("Upload failed: no target file area selected.")
          )}
 
       {:error, reason} ->
@@ -443,16 +445,16 @@ defmodule PhoenixKitManufacturing.Attachments do
 
   @doc "Translates LiveView upload error atoms to user-facing text."
   def upload_error_message(:too_large),
-    do: Gettext.gettext(PhoenixKitWeb.Gettext, "File is too large.")
+    do: gettext("File is too large.")
 
   def upload_error_message(:not_accepted),
-    do: Gettext.gettext(PhoenixKitWeb.Gettext, "File type not accepted.")
+    do: gettext("File type not accepted.")
 
   def upload_error_message(:too_many_files),
-    do: Gettext.gettext(PhoenixKitWeb.Gettext, "Too many files.")
+    do: gettext("Too many files.")
 
   def upload_error_message(other),
-    do: Gettext.gettext(PhoenixKitWeb.Gettext, "Upload error: %{reason}", reason: inspect(other))
+    do: gettext("Upload error: %{reason}", reason: inspect(other))
 
   # ═══════════════════════════════════════════════════════════════════
   # Internals — per-scope state updates
@@ -499,7 +501,7 @@ defmodule PhoenixKitManufacturing.Attachments do
         put_flash(
           socket,
           :error,
-          Gettext.gettext(PhoenixKitWeb.Gettext, "Selected image could not be loaded.")
+          gettext("Selected image could not be loaded.")
         )
 
       file ->
@@ -742,7 +744,7 @@ defmodule PhoenixKitManufacturing.Attachments do
     put_flash(
       socket,
       :error,
-      Gettext.gettext(PhoenixKitWeb.Gettext, "Upload failed for %{name}.",
+      gettext("Upload failed for %{name}.",
         name: entry.client_name
       )
     )
