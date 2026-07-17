@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.3.1 - 2026-07-17
+
+### Fixed
+
+- 11 UI flash-message strings in `Attachments` and `Web.ColumnManagement`
+  (upload/attachment errors, column-save results) were calling
+  `Gettext.gettext/2` / `Gettext.dgettext/3` directly instead of through the
+  macros `use Gettext, backend: ...` provides — invisible to `mix
+  gettext.extract` and therefore never reaching the `et`/`ru` catalogs. Fixed
+  by switching both modules to `use Gettext, backend:
+  PhoenixKitManufacturing.Gettext` + the `gettext`/`dgettext` macros; the 11
+  strings are now translatable and et/ru translations are included ([PR
+  #4](https://github.com/BeamLabEU/phoenix_kit_manufacturing/pull/4)).
+  `Attachments`'s 5 strings were also incorrectly tied to the host app's
+  `PhoenixKitWeb.Gettext` backend rather than this module's own — now
+  consistent with the rest of the module.
+
+### Changed
+
+- Routine dependency lockfile bumps (`mix.lock`).
+
 ## 0.3.0 - 2026-07-14
 
 Everything merged to `main` since 0.2.0 was published to Hex — PR #2
