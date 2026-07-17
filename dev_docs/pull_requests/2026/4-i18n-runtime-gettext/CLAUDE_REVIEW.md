@@ -74,9 +74,17 @@ Ran the project's gate against the merged state (`820177f`, i.e. post-merge on
 - `mix test` (unit; DB unavailable so `:integration` auto-excluded per repo
   convention) — 118 tests, 0 failures
 
-`mix precommit`'s `deps.unlock --check-unused` step fails
+`mix precommit`'s `deps.unlock --check-unused` step originally failed
 (`:ex_aws_sqs`, `:httpoison`, `:jose`, `:metrics`, `:ueberauth_apple`,
 `:unicode_util_compat` unused in `mix.lock`) — confirmed via a throwaway
 worktree at the pre-PR commit (`7c76b00`) that this predates PR #4 and the
 subsequent `364a28e` "lib upgrades" commit entirely. Unrelated dependency
-drift, out of scope for this review; not fixed here.
+drift, out of PR #4's scope, but `mix hex.audit` also failed as part of this
+release's pre-flight: `ueberauth_apple 0.6.1` carries a CRITICAL advisory
+(CVE-2026-55954). Traced its origin — `phoenix_kit` 1.7.187 declared it as a
+dependency; `phoenix_kit` dropped it by 1.7.191 (`2cc8f14`, "Finalize
+dependency pins"), but the orphaned lock entry was never pruned since
+`mix deps.get` alone doesn't remove stale entries. Not a declared dependency
+of this package and never shipped to Hex consumers (`mix.lock` isn't
+published), but cleaned up anyway via `mix deps.unlock --unused` as part of
+the 0.3.1 release — see `CHANGELOG.md`.

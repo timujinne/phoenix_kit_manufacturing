@@ -22,6 +22,14 @@ All notable changes to this project will be documented in this file.
 ### Changed
 
 - Routine dependency lockfile bumps (`mix.lock`).
+- Removed 6 stale, unused entries from `mix.lock` (`ex_aws_sqs`, `httpoison`,
+  `jose`, `metrics`, `ueberauth_apple`, `unicode_util_compat`) — orphaned
+  since `phoenix_kit` dropped `ueberauth_apple` support around 1.7.191 but
+  never pruned from this repo's lockfile. Includes `ueberauth_apple 0.6.1`,
+  which carries a CRITICAL advisory (CVE-2026-55954, account takeover via
+  missing ID token claim validation); it was not a declared dependency of
+  this package and never shipped to consumers (`mix.lock` isn't published to
+  Hex), but `mix hex.audit` now passes clean.
 
 ## 0.3.0 - 2026-07-14
 
