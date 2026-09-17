@@ -2,6 +2,43 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.4.5 - 2026-09-16
+
+### Added
+
+- `PhoenixKitManufacturing.Migrations` — this module now owns and versions
+  the future shape of its 3 tables (`phoenix_kit_machines`,
+  `phoenix_kit_machine_type_assignments`, `phoenix_kit_machine_operations`)
+  via its own migration chain, the same pattern already shipped for
+  `phoenix_kit_posts`, `phoenix_kit_dashboards`, `phoenix_kit_warehouse` and
+  `phoenix_kit_customer_support`. `V1` adopts core's current `V144` shape
+  exactly and stamps a `pkm_schema:1` marker on `phoenix_kit_machines` — a
+  pure Phase-0 adoption with no shape change of any kind (unlike
+  `phoenix_kit_customer_support`'s V1, there is no analogous nullability
+  correction here: V144's source, core's `ExpectedSchema` manifest, and a
+  live database all already agree on all 3 tables' shape).
+  `phoenix_kit_machines` has never carried a `COMMENT` before — the
+  previously-published 0.2.0 module tracked its own version by structural
+  probing, not a table comment — so `pkm_schema:1` is the first one stamped
+  there. `PhoenixKitManufacturing.Schemas.Machine.column_widths/0` is now
+  the single shape authority for both the chain's DDL and `changeset/2`'s
+  own length validations.
+
+### Changed
+
+- Number-type spec fields on the machine form (from a machine type's
+  `field_template`) now use core's `<.decimal_input>` instead of a browser
+  number control. A comma and a dot both work, and a value is no longer
+  lost because of the page locale. (#14)
+- Parseable number-type spec values are stored in one dot-decimal form
+  (`"2,5"` → `"2.5"`). Blank or unparseable text is still stored as
+  submitted.
+- **Requires phoenix_kit ≥ 2.26.0 at compile time**, the first release with
+  `PhoenixKitWeb.Components.Core.DecimalInput` and
+  `PhoenixKit.Utils.Number.parse_decimal/2`. The Hex requirement stays at
+  `~> 2.0` (repo policy, see `test/core_pin_conformance_test.exs`), so a
+  host on an older core must upgrade core too.
+
 ## 0.4.4 - 2026-09-16
 
 ### Added
